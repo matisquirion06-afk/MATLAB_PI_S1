@@ -1,0 +1,177 @@
+====================================================================================
+ PROGRAMME MATLAB DU SYSTÈME RAMASSE-DÉPOSE (RED) - ÉQUIPE 14
+ Projet d'intégration S1 - Génie mécanique - Université de Sherbrooke
+ Version préliminaire du 11 novembre 2026
+====================================================================================
+
+ATTENTION : PREMIÈRE VERSION
+  La structure du programme est complète, mais plusieurs VALEURS sont provisoires
+  (voir la section 5). Les résultats affichés ne sont donc pas encore ceux du
+  rapport. Toutes les valeurs se changent dans un seul fichier : parametres.m.
+
+
+1. COMMENT LANCER LE PROGRAMME
+------------------------------------------------------------------------------------
+  1. Ouvrir Matlab.
+  2. Aller dans le dossier « Programme_Matlab » (il doit apparaître dans la
+     fenêtre « Current Folder »).
+  3. Taper   RED_IUG   dans la fenêtre de commande (Command Window), puis Entrée.
+
+  Autres commandes utiles (à taper dans la fenêtre de commande) :
+     testsRED              exécute la matrice de tests (22 tests)
+     tableauHypotheses     affiche le tableau des hypothèses
+     P = parametres()      charge tous les paramètres dans la variable P
+
+
+2. CE QUE FAIT L'INTERFACE
+------------------------------------------------------------------------------------
+  Colonne de gauche (commandes)
+    - Matériau de la pièce : Delrin, Aluminium ou Acier (même volume).
+    - Loi de mouvement du bras : cubique, quintique ou cycloïdale.
+    - Durée du transfert T et facteur de sécurité (FS) cible : taper la valeur,
+      puis appuyer sur Entrée. La virgule décimale est acceptée (0,9).
+    - Lancer / Pause / Arrêter : animation du cycle. La glissière permet de se
+      déplacer à la main dans le cycle.
+    - Tracés : zoom sur le transfert : agrandit les tracés sur l'étape où la
+      ventouse tient la pièce.
+    - Optimiser : calcule la durée de transfert minimale qui respecte le FS
+      cible, pour les trois matériaux. « Appliquer » utilise cette durée.
+    - Sauvegarder : écrit les résultats dans un fichier texte.
+    - Tableau des hypothèses : ouvre le tableau des valeurs et de leurs sources.
+    - Tests et vérification : exécute les tests (détails dans la fenêtre de
+      commande).
+
+  Centre
+    - Animation du bras, de la ventouse et de la pièce (vue de côté).
+    - Bandeau de couleur : vert = prise sûre ; orange = hors du domaine de
+      validité (limite de l'actionneur) ; rouge = prise non sûre ou entrée
+      invalide.
+    - Valeurs clés du matériau choisi et tableau qui compare les 3 matériaux.
+
+  Colonne de droite
+    - Cinq tracés en fonction du temps : position, vitesse et accélération
+      angulaires du bras, effort de la ventouse, facteur de sécurité.
+    - Le trait vertical rouge indique l'instant montré par l'animation.
+
+
+3. LES FICHIERS, DANS L'ORDRE DE LECTURE CONSEILLÉ
+------------------------------------------------------------------------------------
+  Chaque fichier commence par un en-tête : ce que fait la fonction, ses entrées,
+  ses sorties, les équations utilisées, les sources et les limites.
+
+  A. Les données
+     parametres.m            TOUTES les valeurs d'entrée, avec source et statut
+     tableauHypotheses.m     les mêmes valeurs, présentées en tableau
+
+  B. Les calculs (une fonction = une équation ou une étape du calcul)
+     massePiece.m            volume et masse de la pièce
+     anglesExtremes.m        angles du bras à la prise et au dépôt
+     loiMouvement.m          angle, vitesse et accélération du bras (3 lois)
+     construireCycle.m       assemble les 4 étapes du cycle
+     cinematiquePiece.m      position et accélération de la pièce
+     effortVentouse.m        2e loi de Newton : effort de la ventouse
+     forceMaintien.m         force de maintien de la ventouse (vide x aire)
+     facteurSecurite.m       FS = force de maintien / force requise
+     momentPivot.m           couple requis au pivot (vérification facultative)
+     calculerCycle.m         appelle toutes les fonctions ci-dessus, dans l'ordre
+     dureeMinimale.m         optimisation : durée minimale par dichotomie
+
+  C. Les contrôles
+     validerEntrees.m        refuse les entrées invalides (T <= 0, FS < 1, texte)
+     verifierDomaine.m       juge un résultat (prise sûre ? actionneur dépassé ?)
+
+  D. L'interface
+     RED_IUG.m               fenêtre, boutons, tracés (aucune équation de physique)
+     creerScene.m            dessine le décor de l'animation
+     majScene.m              déplace les objets de l'animation
+     sauvegarderResultats.m  écrit le fichier texte des résultats
+
+  E. La vérification
+     verifIndependante.m     refait les calculs par une AUTRE méthode
+     testsRED.m              matrice de tests (ID | Cas testé | Entrées |
+                             Résultat attendu | Résultat obtenu | Verdict)
+
+  Conseil pour comprendre le programme : lire parametres.m, puis calculerCycle.m
+  (il montre l'enchaînement des calculs en 9 étapes), puis les fonctions de
+  calcul une à une. Lire RED_IUG.m en dernier.
+
+
+4. COMMENT CHANGER UNE VALEUR
+------------------------------------------------------------------------------------
+  1. Ouvrir parametres.m.
+  2. Modifier la valeur (attention aux unités : mètres, kilogrammes, secondes,
+     pascals). Mettre à jour le commentaire : source et statut.
+  3. Mettre à jour la ligne correspondante dans tableauHypotheses.m (colonne
+     « Source et justification » et colonne « Statut »).
+  4. Enregistrer, puis relancer RED_IUG.
+  5. Relancer testsRED pour vérifier que tout fonctionne encore.
+
+  Aucune valeur numérique du modèle n'est écrite ailleurs que dans parametres.m.
+
+
+5. VALEURS PROVISOIRES À CONFIRMER OU À REMPLACER
+------------------------------------------------------------------------------------
+  Légende : [Fourni] document de l'équipe ; [Web] trouvé en ligne ;
+            [Claude] hypothèse ou relevé de l'assistant IA.
+
+  - Niveau de vide : 60 kPa [Web : exemples de SMC et de Schmalz]. À remplacer
+    par la fiche du générateur de vide retenu.
+  - Facteur de sécurité cible : 2,0 [Web : Schmalz]. À fixer et à justifier par
+    l'équipe (exigence de la consigne).
+  - Coefficient de frottement ventouse-pièce : 0,5 pour les trois matériaux
+    [Web : valeur de référence de Schmalz]. À sourcer par matériau.
+  - Masses volumiques : 1420, 2700 et 7850 kg/m^3 [Fourni : tableur de
+    l'équipe, sans source indiquée]. Fiches techniques à citer.
+  - Dimensions de la rondelle : D = 38 mm, H = 22 mm, trou de 1 mm [Fourni :
+    tableur de l'équipe]. Valeurs nominales à fixer.
+  - Hauteurs de prise (33,35 mm) et de dépôt (26,25 mm) [Fourni : notes de
+    visite]. À valider avec la vidéo.
+  - Durées des étapes : 105, 27, 84 et 24,5 images [Claude : relevé
+    préliminaire dans la vidéo, +/- 2 images]. À refaire par l'équipe.
+  - Loi de mouvement par défaut : cubique. Choix et justification à faire.
+  - Centre de masse du bras : barre uniforme [Claude]. À remplacer par les
+    Propriétés de masse de SolidWorks.
+  - Durée minimale d'une rotation de l'actionneur : 0,167 s [Claude :
+    interprétation des 3 Hz du catalogue Festo]. À confirmer.
+
+  Valeurs confirmées (CAD ou catalogue) : R = 177 mm, pivot à 56 mm de la table,
+  lèvre de la ventouse à 26,5 mm sous l'axe de la poulie, ventouse de 20 mm,
+  masses du bras (311 g) et de l'ensemble ventouse (76 g), couple de
+  l'actionneur (2 N.m à 6 bar).
+
+
+6. ÉTAT DES ESSAIS
+------------------------------------------------------------------------------------
+  - Le programme a été écrit avec l'aide d'une IA générative (Claude, Anthropic)
+    et essayé dans GNU Octave 8.4 (logiciel compatible avec Matlab), PAS dans
+    Matlab. L'équipe doit donc faire l'essai final dans Matlab.
+  - Résultat dans Octave : 22 tests sur 22 conformes ; écarts inférieurs à
+    0,01 % avec le calcul indépendant ; tous les boutons de l'interface essayés
+    (sauf la fenêtre « Enregistrer sous », qui dépend du système).
+  - Dans Octave seulement : les colonnes des tableaux écrits dans la fenêtre de
+    commande et dans le fichier texte sont un peu décalées sur les lignes qui
+    contiennent des accents. L'effet ne devrait pas apparaître dans Matlab.
+  - Les fichiers sont enregistrés en UTF-8. Si les accents s'affichent mal
+    (Matlab R2019b ou plus ancien), le programme fonctionne quand même ; il
+    faut alors rouvrir les fichiers en UTF-8.
+
+
+7. LIMITES CONNUES DU MODÈLE
+------------------------------------------------------------------------------------
+  - Le bras suit exactement la loi de mouvement choisie. Un vérin pneumatique
+    réel ne suit pas exactement une telle loi (butées, pas d'amortisseurs).
+  - Le niveau de vide est constant : fuites et temps d'établissement négligés.
+  - La pièce est tenue par la ventouse seulement pendant le transfert.
+  - L'animation montre le mouvement commandé : si le FS passe sous 1, la pièce
+    est dessinée en rouge, mais elle reste sous la ventouse.
+  - La ventouse du CAD (20 mm, plate) diffère de celle de la vidéo (à soufflet).
+
+
+8. RAPPELS POUR LA REMISE (consigne, p. 6 et 7)
+------------------------------------------------------------------------------------
+  - L'équipe reste pleinement responsable du code et des résultats : chaque
+    membre doit pouvoir expliquer chaque fonction.
+  - Déclaration d'usage de l'IA générative et déclaration de responsabilité
+    signée à joindre au document de 6 pages.
+  - Tenir un journal des erreurs trouvées pendant les essais (au moins une
+    erreur, avec sa cause et sa correction).
