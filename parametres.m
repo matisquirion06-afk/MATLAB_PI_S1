@@ -80,18 +80,8 @@ P.hAppuiDepot = 0.02625;    % [m]
 
 
 
-% Hauteur du bras lorsque celui-ci est en fin de cycle. Cette hauteur est
-% la même pour la prise et pour le dépot. 
-P.hauteurPrise = P.hAppuiPrise - P.hPivot;        % [m]                                             À VÉRIFIER
-P.hauteurDepot = P.hAppuiDepot - P.hPivot;
-
-
-% Angle initial lorsque le bras se situe au dépot
-thetaDepot = asin(P.hauteurDepot/P.L);
-P.thetaDepot = thetaDepot;
-
-% Angle lorsque le bras se situe au-dessus de la prise de la rondelle.
-P.thetaPrise = (pi) - asin(P.hauteurPrise/P.L);
+% Les angles extremes du bras sont calcules plus bas (section 3b) : ils
+% dependent de la hauteur de la rondelle, definie a la section 3.
 
 
 
@@ -109,6 +99,21 @@ P.piece.profTrou = 0.0105;  % [m] profondeur totale du trou sur le dessus
 P.piece.diamTrou = 0.001;   % [m] diamètre de la partie droite du trou
 P.piece.diamCone = 0.0126;  % [m] diamètre de la zone conique
 P.piece.profCone = 0.0029;  % [m] profondeur de la zone conique
+
+%% ------------------------------------------------------------------------
+%  3b. ANGLES EXTREMES DU BRAS
+% -------------------------------------------------------------------------
+% La LEVRE de la ventouse se pose sur le DESSUS de la rondelle, et l'axe de
+% la poulie est d_levre plus haut que la levre :
+%     y_axe = h_appui + H + d_levre - h_pivot
+% Le calcul et le controle de domaine sont dans hauteurAxePoulie.m, pour que
+% le test L4 de testsRED.m verifie le vrai code et non une copie.
+P.hauteurPrise = hauteurAxePoulie(P, P.hAppuiPrise);   % [m]
+P.hauteurDepot = hauteurAxePoulie(P, P.hAppuiDepot);   % [m]
+
+% Le depot est a DROITE (angle petit, positif), la prise est a GAUCHE.
+P.thetaDepot = asin(P.hauteurDepot / P.L);          % [rad]
+P.thetaPrise = pi - asin(P.hauteurPrise / P.L);     % [rad]
 
 %% ------------------------------------------------------------------------
 %  4. MATÉRIAUX DE LA PIÈCE
@@ -200,7 +205,7 @@ P.duree.attenteDepot = P.images.attenteDepot / P.imagesParSeconde;  % [s]
 P.duree.retour       = P.images.retour       / P.imagesParSeconde;  % [s]
 
 %% ------------------------------------------------------------------------
-%  8. ACTIONNEUR ET MASSES EN ROTATION (vérification facultative)
+%  7. ACTIONNEUR ET MASSES EN ROTATION (vérification facultative)
 % -------------------------------------------------------------------------
 % La consigne permet d'ajouter « le moment au pivot ». On s'en sert ici
 % comme LIMITE DU DOMAINE DE VALIDITÉ : si le couple demandé dépasse celui
@@ -237,7 +242,7 @@ P.bras.distCM   = 0.0885;   % [m] distance pivot -> centre de masse
 P.masseVentouse = 0.076;    % [kg]
 
 %% ------------------------------------------------------------------------
-%  9. RÉGLAGES NUMÉRIQUES (sans effet sur la physique)
+%  8. RÉGLAGES NUMÉRIQUES (sans effet sur la physique)
 % -------------------------------------------------------------------------
 P.nPts = 400;               % nombre de points de calcul par étape du cycle
 

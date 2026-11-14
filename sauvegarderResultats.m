@@ -54,7 +54,7 @@ fprintf(fid, 'tableau des hypothèses (section 6) restent à confirmer.\n\n');
 % --- 1. Entrées --------------------------------------------------------------------------
 fprintf(fid, '1. ENTRÉES CHOISIES DANS L''INTERFACE\n');
 fprintf(fid, '   Matériau de la pièce      : %s\n', res.nomMateriau);
-fprintf(fid, '   Loi de mouvement          : %s\n', res.nomLoi);
+fprintf(fid, '   Loi de mouvement          : polynomiale cubique (degre 3)\n');
 fprintf(fid, '   Durée du transfert T      : %.3f s\n', res.T);
 fprintf(fid, '   Facteur de sécurité cible : %.2f\n\n', FScible);
 
@@ -137,9 +137,9 @@ fprintf(fid, '\n');
 
 % --- 7. Traçabilité -----------------------------------------------------------------------------------------------------
 fprintf(fid, '7. TRAÇABILITÉ : RÉSULTAT -> ÉQUATION -> FONCTION MATLAB\n');
-fprintf(fid, '   Angles extrêmes       : sin(phi) = (h + H + d_levre - h_pivot) / R         -> anglesExtremes.m\n');
-fprintf(fid, '   theta, omega, alpha   : theta = theta0 + delta_theta * s(t/T), dérivées     -> loiMouvement.m\n');
-fprintf(fid, '   Accélération pièce    : ax = R*alpha*sin + R*omega^2*cos ; ay = R*alpha*cos - R*omega^2*sin -> cinematiquePiece.m\n');
+fprintf(fid, '   Angles extrêmes       : sin(phi) = (h + H + d_levre - h_pivot) / L       -> hauteurAxePoulie.m\n');
+fprintf(fid, '   theta, omega, alpha   : theta = theta_i + delta_theta * s(t/T), dérivées  -> DeplacementAngulaire.m\n');
+fprintf(fid, '   Accélération pièce    : ax = -L*alpha*sin - L*omega^2*cos ; ay = L*alpha*cos - L*omega^2*sin -> cinematiquePiece.m\n');
 fprintf(fid, '   Masse                 : m = rho * V                                         -> massePiece.m\n');
 fprintf(fid, '   Effort de la ventouse : Fx = m*ax ; Fy = m*(g + ay) (2e loi de Newton)      -> effortVentouse.m\n');
 fprintf(fid, '   Maintien requis       : F_requis = Fy + |Fx| / mu                           -> effortVentouse.m\n');

@@ -8,7 +8,6 @@ function V = verifIndependante(P, iMat, T, FScible, afficher)
 %     P         structure des paramètres (voir parametres.m)
 %     iMat      numéro du matériau (1 = Delrin, 2 = Aluminium, 3 = Acier)
 %     T         durée du transfert [s]
-%     nomLoi    loi de mouvement : 'cubique', 'quintique' ou 'cycloidale'
 %     FScible   facteur de sécurité cible [-]
 %     afficher  (facultatif) true pour écrire le tableau à l'écran (par défaut)
 %
@@ -140,7 +139,7 @@ V.reussi = all(V.ecart < tolerance);
 % =====================================================================================
 if afficher
     fprintf('\nVÉRIFICATION PAR UN CALCUL INDÉPENDANT\n');
-    fprintf('Matériau : %s ; loi : %s ; T = %.3f s ; FS cible = %.2f\n\n', ...
+    fprintf('Matériau : %s ; T = %.3f s ; FS cible = %.2f\n\n', ...
             P.materiaux(iMat).nom, T, FScible);
     fprintf('%-36s | %12s | %12s | %9s | %s\n', ...
             'Résultat', 'Programme', 'Indépendant', 'Écart (%)', 'Verdict');
