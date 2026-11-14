@@ -199,10 +199,33 @@ P.images.transfert    = 27;                 % [images]
 P.images.attenteDepot = 84;                 % [images]
 P.images.retour       = 24.5;               % [images]
 
-P.duree.attentePrise = P.images.attentePrise / P.imagesParSeconde;  % [s]
-P.duree.transfert    = P.images.transfert    / P.imagesParSeconde;  % [s]
-P.duree.attenteDepot = P.images.attenteDepot / P.imagesParSeconde;  % [s]
-P.duree.retour       = P.images.retour       / P.imagesParSeconde;  % [s]
+% Les deux ROTATIONS gardent la duree comptee dans la video : ce sont des
+% evenements visuellement nets, et elles sont les seules a entrer dans la
+% physique (le transfert fixe les efforts et le facteur de securite).
+P.duree.transfert = P.images.transfert / P.imagesParSeconde;  % [s]
+P.duree.retour    = P.images.retour    / P.imagesParSeconde;  % [s]
+
+% Duree totale du cycle imposee par le client.
+% [Fourni] « Infos visite Cegep.docx », mandats : « raccourcir le cycle
+% (6 s actuellement) ». Decision d'equipe du 14 nov. 2026 : on retient
+% cette valeur plutot que les 8,0 s du decompte d'images, parce que les
+% ATTENTES varient beaucoup d'un cycle a l'autre dans la video (3,5 s puis
+% 8,5 s pour l'attente a la prise), alors que les deux rotations, elles,
+% sont stables. Les attentes dependent du reste de la ligne, pas du bras.
+% Statut : CONFIRME (valeur du client), repartition PROVISOIRE.
+P.dureeCycle = 6.0;         % [s]
+
+% Les deux ATTENTES se partagent ce qui reste du cycle, dans la proportion
+% observee dans la video (105 images a la prise contre 84 au depot).
+attentes = P.dureeCycle - P.duree.transfert - P.duree.retour;
+if attentes <= 0
+    error('RED:cycle', ...
+        ['Cycle de %.2f s trop court : les deux rotations en occupent ' ...
+         'deja %.2f s.'], P.dureeCycle, P.duree.transfert + P.duree.retour);
+end
+partPrise = P.images.attentePrise / (P.images.attentePrise + P.images.attenteDepot);
+P.duree.attentePrise = attentes * partPrise;          % [s]
+P.duree.attenteDepot = attentes * (1 - partPrise);    % [s]
 
 %% ------------------------------------------------------------------------
 %  7. ACTIONNEUR ET MASSES EN ROTATION (vérification facultative)
