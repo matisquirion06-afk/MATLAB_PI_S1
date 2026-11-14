@@ -112,9 +112,12 @@ else
             cycleMin = R{i}.dureeCycle - R{i}.T + Tmin(i);
             fprintf(fid, '   %-12s : T min = %.4f s ; cycle %.3f s -> %.3f s ; cadence %.3f -> %.3f pièces/min\n', ...
                     R{i}.nomMateriau, Tmin(i), R{i}.dureeCycle, cycleMin, R{i}.cadence, 60 / cycleMin);
+            fprintf(fid, '                  contrainte active : %s (ventouse %.4f s ; couple %.4f s ; fréquence %.4f s)\n', ...
+                    upper(info.limite), info.Tventouse, info.Tcouple, info.Tfrequence);
         end
     end
-    fprintf(fid, '   Méthode : dichotomie (dureeMinimale.m), précision de %g s.\n\n', P.recherche.tolerance);
+    fprintf(fid, '   Méthode : dichotomie sur les trois contraintes (dureeMinimale.m\n');
+    fprintf(fid, '             et dureeCouple.m), précision de %g s.\n\n', P.recherche.tolerance);
 end
 
 % --- 5. État de la prise et domaine de validité --------------------------------------------------------------
@@ -145,7 +148,9 @@ fprintf(fid, '   Effort de la ventouse : Fx = m*ax ; Fy = m*(g + ay) (2e loi de 
 fprintf(fid, '   Maintien requis       : F_requis = Fy + |Fx| / mu                           -> effortVentouse.m\n');
 fprintf(fid, '   Force de maintien     : F_vide = delta_p * pi * d^2 / 4                     -> forceMaintien.m\n');
 fprintf(fid, '   Facteur de sécurité   : FS = F_vide / F_requis                              -> facteurSecurite.m\n');
-fprintf(fid, '   Durée minimale        : FS_min(T) = FS_cible, résolue par dichotomie        -> dureeMinimale.m\n');
+fprintf(fid, '   Durée minimale        : T_min = max(T_ventouse, T_couple, T_frequence)      -> dureeMinimale.m\n');
+fprintf(fid, '     dont ventouse       : FS_min(T) = FS_cible, résolue par dichotomie        -> dureeMinimale.m\n');
+fprintf(fid, '     dont couple         : max|M(T)| = M_actionneur, résolue par dichotomie    -> dureeCouple.m\n');
 fprintf(fid, '   Couple au pivot       : M = J*alpha + g*cos(theta)*(somme des m*d)          -> momentPivot.m\n\n');
 
 % --- 8. Valeurs calculées pendant le transfert ---------------------------------------------------------------------------------

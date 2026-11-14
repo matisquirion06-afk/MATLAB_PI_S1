@@ -59,20 +59,62 @@ end
 [~, iDense] = max([P.materiaux.rho]);
 nomDense    = P.materiaux(iDense).nom;
 
-% L1 : à la durée minimale, le FS minimal doit être égal à la cible.
+% L1 : à la durée minimale, les DEUX contraintes doivent être respectées et
+%      la contrainte annoncée comme active doit être atteinte exactement.
+%      [Claude] Avant le 14 nov. 2026, ce test exigeait FS min = FS cible.
+%      C'était juste tant que la ventouse était la seule contrainte. Depuis
+%      que le couple de l'actionneur est pris en compte, la contrainte
+%      active peut être l'une ou l'autre : le test vérifie maintenant la
+%      bonne propriété, soit qu'aucune limite n'est dépassée et que celle
+%      qui gouverne est serrée.
 [Tmin, info] = dureeMinimale(P, iDense, FS);
 if strcmp(info.statut, 'ok')
-    res    = calculerCycle(P, iDense, Tmin);
-    ecart  = 100 * abs(res.FSmin - FS) / FS;
-    reussi = (ecart < 0.5);
-    obtenu = sprintf('T min = %.4f s ; FS min = %.4f (écart %.3f %%)', Tmin, res.FSmin, ecart);
+    res = calculerCycle(P, iDense, Tmin);
+
+    % Aucune limite dépassée (petite tolérance pour l'arrondi numérique).
+    FSok     = (res.FSmin    >= FS * 0.999);
+    coupleOk = (res.coupleMax <= P.actionneur.couple * 1.001);
+
+    % La contrainte annoncée active est-elle réellement atteinte ?
+    switch info.limite
+        case 'ventouse'
+            ecart = 100 * abs(res.FSmin - FS) / FS;
+        case 'couple'
+            ecart = 100 * abs(res.coupleMax - P.actionneur.couple) / P.actionneur.couple;
+        otherwise
+            ecart = 0;      % limite de fréquence : rien à serrer
+    end
+
+    reussi = FSok && coupleOk && (ecart < 0.5);
+    obtenu = sprintf(['T min = %.4f s ; limite %s serrée à %.3f %% ; ' ...
+        'FS min = %.3f ; couple max = %.3f N.m'], ...
+        Tmin, info.limite, ecart, res.FSmin, res.coupleMax);
 else
     reussi = false;
     obtenu = ['Pas de solution : ' info.message];
 end
 tab = ajouter(tab, 'L1', ['Limite - transfert à la durée minimale (' nomDense ')'], ...
-    sprintf('T = T min ; FS cible = %.2f', FS), ...
-    'FS min = FS cible (écart < 0,5 %)', obtenu, reussi);
+    sprintf('T = T min ; FS cible = %.2f ; couple max = %.2f N.m', FS, P.actionneur.couple), ...
+    'FS >= cible ET couple <= limite ; contrainte active serrée (< 0,5 %)', obtenu, reussi);
+
+% L5 : le retour à vide doit être PLUS RAPIDE que le transfert chargé.
+%      [Claude] Test ajouté le 14 nov. 2026. C'est le symptôme qui a révélé
+%      l'erreur : le retour affichait 0,817 s (valeur vidéo jamais
+%      optimisée) contre 0,366 s pour le transfert, ce qui est
+%      physiquement impossible à couple égal, le bras à vide ayant moins
+%      d'inertie et moins de moment de gravité à vaincre.
+[TretourMin, infoR] = dureeCouple(P, 0, P.thetaDepot, P.thetaPrise);
+if strcmp(infoR.statut, 'ok')
+    reussi = (TretourMin < Tmin);
+    obtenu = sprintf('Retour à vide = %.4f s < transfert chargé = %.4f s', ...
+                     TretourMin, Tmin);
+else
+    reussi = false;
+    obtenu = ['Pas de solution : ' infoR.message];
+end
+tab = ajouter(tab, 'L5', 'Limite - le retour à vide est plus rapide que le transfert', ...
+    sprintf('masse portée = 0 kg, puis %s ; couple max = %.2f N.m', nomDense, P.actionneur.couple), ...
+    'Durée minimale du retour < durée minimale du transfert', obtenu, reussi);
 
 % L2 : bras immobile, l'effort de la ventouse est égal au poids.
 m  = massePiece(P, iDense);

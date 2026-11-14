@@ -1,12 +1,15 @@
-function res = calculerCycle(P, iMat, T)
+function res = calculerCycle(P, iMat, T, Tretour)
 % CALCULERCYCLE  Calcul complet d'un cycle pour un matériau : c'est le « chef d'orchestre ».
 %
 %   res = calculerCycle(P, iMat, T)
+%   res = calculerCycle(P, iMat, T, Tretour)
 %
 %   ENTRÉES
 %     P        structure des paramètres (voir parametres.m)
 %     iMat     numéro du matériau (1 = Delrin, 2 = Aluminium, 3 = Acier)
 %     T        durée du transfert avec pièce [s]
+%     Tretour  durée du retour à vide [s], FACULTATIF. Absent, on prend
+%              P.duree.retour (valeur comptée dans la vidéo).
 %
 %   SORTIE : structure res qui réunit TOUS les résultats.
 %
@@ -33,7 +36,10 @@ function res = calculerCycle(P, iMat, T)
 %     res.couple                       -> momentPivot.m
 
 % --- 1. Mouvement du bras sur tout le cycle ------------------------------
-C = construireCycle(P, T);
+if nargin < 4
+    Tretour = [];           % [] = laisser construireCycle prendre P.duree.retour
+end
+C = construireCycle(P, T, Tretour);
 
 % --- 2. Mouvement de la pièce --------------------------------------------
 K = cinematiquePiece(P, C.theta, C.omega, C.alpha);
@@ -78,7 +84,8 @@ Mp = momentPivot(P, masseTransportee, C.theta, C.alpha);
 % a) Rappel des entrées
 res.iMat        = iMat;
 res.nomMateriau = P.materiaux(iMat).nom;
-res.T           = T;
+res.T           = T;                % [s] durée du transfert (étape 4)
+res.Tretour     = C.tFinEtape(2) - C.tDebutEtape(2);    % [s] étape 2
 
 % b) Cycle et mouvement du bras
 res.t           = C.t;              % [s]
