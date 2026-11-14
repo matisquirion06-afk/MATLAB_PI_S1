@@ -31,11 +31,11 @@ function hs = creerScene(ax, P, res)
 mm = 1000;                              % facteur de conversion m -> mm
 
 % --- 1. Cotes utiles, en millimètres ----------------------------------------
-R       = P.R * mm;                     % longueur du bras
+L       = P.L * mm;                     % longueur du bras
 yTable  = -P.hPivot * mm;               % la table est sous le pivot
 D       = P.piece.D * mm;               % diamètre de la pièce
-xPrise  = -R * cos(res.thetaPrise);     % position horizontale de la prise
-xDepot  = -R * cos(res.thetaDepot);     % position horizontale du dépôt
+xPrise  = L * cos(res.thetaPrise);     % position horizontale de la prise
+xDepot  = L * cos(res.thetaDepot);     % position horizontale du dépôt
 hPrise  = P.hAppuiPrise * mm;           % hauteur du support de prise
 hDepot  = P.hAppuiDepot * mm;           % hauteur du support de dépôt
 largeur = D + 14;                       % largeur dessinée des supports
@@ -51,7 +51,7 @@ laiton    = [0.72 0.58 0.20];
 cla(ax);
 hold(ax, 'on');
 set(ax, 'DataAspectRatio', [1 1 1]);    % 1 mm en x = 1 mm en y (pas de déformation)
-set(ax, 'XLim', [-(R + 78), R + 78], 'YLim', [yTable - 26, R + 38]);
+set(ax, 'XLim', [-(L + 78), L + 78], 'YLim', [yTable - 26, L + 38]);
 set(ax, 'Box', 'on', 'Color', [1 1 1]);
 xlabel(ax, 'x (mm)');
 ylabel(ax, 'y (mm)');
@@ -59,7 +59,7 @@ title(ax, 'Animation du cycle (vue de côté)');
 
 % --- 3. Décor fixe --------------------------------------------------------------
 % a) La table : un trait épais
-line('Parent', ax, 'XData', [-(R + 78), R + 78], 'YData', [yTable, yTable], ...
+line('Parent', ax, 'XData', [-(L + 78), L + 78], 'YData', [yTable, yTable], ...
      'Color', grisFonce, 'LineWidth', 3);
 
 % b) Les supports de prise et de dépôt : des rectangles pleins.
@@ -86,7 +86,7 @@ patch('Parent', ax, ...
 
 % d) La trajectoire de l'axe de la poulie : un arc de cercle en pointillé
 angles = linspace(res.thetaPrise, res.thetaDepot, 100);
-line('Parent', ax, 'XData', -R * cos(angles), 'YData', R * sin(angles), ...
+line('Parent', ax, 'XData', L * cos(angles), 'YData', L * sin(angles), ...
      'Color', [0.55 0.55 0.55], 'LineStyle', '--');
 
 % --- 4. Objets mobiles (leurs positions seront fixées par majScene.m) ----------
@@ -128,7 +128,7 @@ hs.piece = patch('Parent', ax, 'XData', [0 0 0 0], 'YData', [0 0 0 0], ...
                  'FaceColor', [0.5 0.5 0.5], 'EdgeColor', 'k', 'LineWidth', 1);
 
 % h) Le texte qui indique le temps et l'étape en cours
-hs.texte = text(-(R + 70), R + 24, '', 'Parent', ax, 'FontSize', 10, ...
+hs.texte = text(-(L + 70), L + 24, '', 'Parent', ax, 'FontSize', 10, ...
                 'FontWeight', 'bold', 'Color', [0.10 0.25 0.55]);
 
 % On garde aussi le rayon dessiné des poulies pour majScene.m

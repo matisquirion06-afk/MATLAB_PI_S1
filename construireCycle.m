@@ -1,12 +1,12 @@
-function C = construireCycle(P, T, nomLoi)
-% CONSTRUIRECYCLE  Mouvement du bras pendant un cycle complet (4 étapes).
+function C = construireCycle(P, T)
+%% CONSTRUIRECYCLE  Mouvement du bras pendant un cycle complet (4 étapes).
 %
-%   C = construireCycle(P, T, nomLoi)
+%   C = construireCycle(P, T)
 %
 %   ENTRÉES
 %     P        structure des paramètres (voir parametres.m)
 %     T        durée du transfert avec pièce (prise -> dépôt) [s]
-%     nomLoi   loi de mouvement : 'cubique', 'quintique' ou 'cycloidale'
+%
 %
 %   SORTIE : structure C contenant
 %     C.t            temps depuis le début du cycle [s]            (vecteur)
@@ -22,35 +22,43 @@ function C = construireCycle(P, T, nomLoi)
 %     C.thetaPrise, C.thetaDepot, C.amplitude   angles extrêmes [rad]
 %
 %   LES 4 ÉTAPES DU CYCLE (ordre observé dans la vidéo)
-%     1. Attente à la prise   bras immobile au-dessus de la pièce (aspiration)
-%     2. Transfert            rotation prise -> dépôt AVEC la pièce (durée T)
-%     3. Attente au dépôt     bras immobile, la pièce est relâchée
-%     4. Retour à vide        rotation dépôt -> prise SANS pièce
+%     1. Attente au dépôt     bras immobile, position initiale
+%     2. Retour à vide        rotation dépôt -> prise SANS pièce
+%     3. Attente à la prise   bras immobile au-dessus de la pièce (aspiration)
+%     4. Transfert            rotation prise -> dépôt AVEC la pièce (durée T)
 %
-%   La durée T de l'étape 2 est celle que l'optimisation cherche à
+%   La durée T de l'étape 4 est celle que l'optimisation cherche à
 %   réduire. Les trois autres durées viennent de la vidéo (parametres.m).
 %
 %   HYPOTHÈSE : la pièce est portée par la ventouse seulement pendant
-%   l'étape 2. Aux étapes 1 et 3, elle repose sur son support.
+%   l'étape 4. Aux autres étapes, elle repose sur son support.
 
-% --- 1. Angles extrêmes du bras ------------------------------------------
-[thetaPrise, thetaDepot, amplitude] = anglesExtremes(P);
 
-% --- 2. Description des 4 étapes ------------------------------------------
-nomsEtapes = {'1. Attente à la prise', ...
-              '2. Transfert avec la pièce', ...
-              '3. Attente au dépôt', ...
-              '4. Retour à vide'};
 
-%            étape 1                étape 2      étape 3                étape 4
-durees     = [P.duree.attentePrise, T,           P.duree.attenteDepot,  P.duree.retour];
-angleDebut = [thetaPrise,           thetaPrise,  thetaDepot,            thetaDepot];
-angleFin   = [thetaPrise,           thetaDepot,  thetaDepot,            thetaPrise];
+%% --- 1. Angles extrêmes du bras -----------------------------------------
+thetaPrise = P.thetaPrise;
+thetaDepot = P.thetaDepot;
+amplitude = abs(thetaDepot-thetaPrise);
 
-nEtapes = 4;
+
+
+%% --- 2. Description des 4 étapes ----------------------------------------
+nomsEtapes = {'1. Attente au dépot', ...
+    '2. Retour à vide', ...
+    '3. Attente à la prise', ...
+    '4. Transfert'};
+
+%                    étape 1              étape 2               étape 3           étape 4
+durees     = [P.duree.attenteDepot,   P.duree.retour,   P.duree.attentePrise,       T     ];
+angleDebut = [     thetaDepot,          thetaDepot,          thetaPrise,        thetaPrise];
+angleFin   = [     thetaDepot,          thetaPrise,          thetaPrise,        thetaDepot];
+
+
+
+nEtapes = 4;                        % nombre d'étapes
 n       = P.nPts;                   % nombre de points de calcul par étape
 
-% --- 3. Réserver la mémoire des vecteurs résultats ------------------------
+%% --- 3. Réserver la mémoire des vecteurs résultats ----------------------
 % zeros(1, N) crée un vecteur ligne de N zéros qu'on remplit ensuite.
 t     = zeros(1, nEtapes*n);
 theta = zeros(1, nEtapes*n);
@@ -61,7 +69,8 @@ etape = zeros(1, nEtapes*n);
 tDebutEtape = zeros(1, nEtapes);
 tFinEtape   = zeros(1, nEtapes);
 
-% --- 4. Calculer chaque étape et la placer à la suite des autres ----------
+
+%% --- 4. Calculer chaque étape et la placer à la suite des autres --------
 tDepart = 0;                        % [s] temps au début de l'étape en cours
 
 for k = 1:nEtapes
@@ -77,8 +86,8 @@ for k = 1:nEtapes
         alphaK = zeros(1, n);
     else
         % Étape de rotation : on applique la loi de mouvement.
-        [thetaK, omegaK, alphaK] = loiMouvement(nomLoi, tLocal, durees(k), ...
-                                                angleDebut(k), angleFin(k));
+        [thetaK, omegaK, alphaK] = DeplacementAngulaire(tLocal, durees(k), ...
+            angleDebut(k), angleFin(k));
     end
 
     % Positions (indices) de cette étape dans les grands vecteurs.
@@ -97,13 +106,13 @@ for k = 1:nEtapes
     tDepart = tDepart + durees(k);  % l'étape suivante commence ici
 end
 
-% --- 5. Ranger les résultats dans la structure de sortie ------------------
+%% --- 5. Ranger les résultats dans la structure de sortie ----------------
 C.t           = t;
 C.theta       = theta;
 C.omega       = omega;
 C.alpha       = alpha;
 C.etape       = etape;
-C.tenue       = (etape == 2);       % la pièce est tenue pendant l'étape 2
+C.tenue       = (etape == 4);       % la pièce est tenue pendant l'étape 4
 C.nomsEtapes  = nomsEtapes;
 C.tDebutEtape = tDebutEtape;
 C.tFinEtape   = tFinEtape;
@@ -113,3 +122,14 @@ C.thetaDepot  = thetaDepot;
 C.amplitude   = amplitude;
 
 end
+
+
+
+
+
+
+
+
+
+
+

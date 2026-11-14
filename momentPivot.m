@@ -13,7 +13,7 @@ function M = momentPivot(P, masseTransportee, theta, alpha)
 %   SORTIE : structure M contenant
 %     M.couple     couple requis de l'actionneur [N.m] (positif dans le
 %                  sens du transfert)
-%     M.J          moment d'inertie total ramené au pivot [kg.m^2]
+%     M.I          moment d'inertie total ramené au pivot [kg.m^2]
 %     M.Mgravite   part du couple qui sert à vaincre la gravité [N.m]
 %
 %   À QUOI SERT CETTE FONCTION
@@ -24,44 +24,45 @@ function M = momentPivot(P, masseTransportee, theta, alpha)
 %     quand le couple requis dépasse le couple de l'actionneur
 %     (P.actionneur.couple).
 %
-%   ÉQUATIONS (somme des moments autour du pivot = J * alpha)
-%     couple = J * alpha + Mgravite
+%   ÉQUATIONS (somme des moments autour du pivot = I * alpha)
+%       coupleActionneur - Mgravite = I*alpha
 %
-%     J        = Jbras + (mVentouse + mPiece) * R^2
-%     Jbras    = mBras * (L^2/12 + dCM^2)
-%                (barre uniforme de longueur L, théorème des axes
-%                parallèles pour un centre de masse à dCM du pivot)
-%     Mgravite = g * cos(theta) * (mBras*dCM + (mVentouse + mPiece)*R)
+%               où Mgravite = Mbras + Mven
+%                  Mgravite = (L/2)*(Pbras)*cos(theta) + (L)*(Pven)*cos(theta)
+%               Mgravite = (L)*(g)*cos(theta)*((1/2)*(mBras) + mVentouse + mPiece)
 %
-%     - L'ensemble ventouse et la pièce ne tournent pas sur eux-mêmes
-%       (voir cinematiquePiece.m). Ils comptent donc comme des masses
-%       placées à la distance R du pivot : m * R^2.
-%     - Le bras de levier du poids est horizontal : distance * cos(theta).
-%       Avant la verticale (theta < 90°), le poids s'oppose au mouvement ;
-%       après la verticale, il l'aide (cos(theta) devient négatif).
 %
-%   SOURCE : [Claude] dynamique de rotation autour d'un axe fixe (matière
-%   du cours de dynamique). Valeurs d'inertie PROVISOIRES : voir
-%   parametres.m (à remplacer par les « Propriétés de masse » de SolidWorks).
+%       Le moment d'inertie I est le moment d'inertie total.
+%               I = Ibras + Iven
+%                  où Ibras est approximé comme étant une barre uniforme de
+%                  longueur L et Iven est le moment d'inertie du système de
+%                  ventouse et est approximé avec le théorème des axes 
+%                  parallèles
+% 
+%               Ibras = mBras * ((lBras^2)/12 + (dCM)^2)
+%               Iven = (mVentouse + mPiece) * (L^2)
 %
-%   LIMITES : frottements, tuyaux d'air et courroie négligés. Le couple de
-%   2 N.m du catalogue est un couple THÉORIQUE à 6 bar.
+%       On isole alors le couple transmis par l'actionneur pneumatique
+%           coupleActionneur = (Ibras + Iven)*alpha + (Mgravite)
+%
+% --- 1. Moment d'inertie du bras seul, par rapport au pivot [kg.m^2] -----
+Ibras = P.bras.masse * (P.bras.longueur^2 / 12 + P.bras.distCM^2);
 
-% --- 1. Moment d'inertie du bras seul, par rapport au pivot [kg.m^2] ------
-Jbras = P.bras.masse * (P.bras.longueur^2 / 12 + P.bras.distCM^2);
-
-% --- 2. Masse placée au bout du bras [kg] ---------------------------------
+% --- 2. Moment d'inertie du système ventouse [kg.m^2] --------------------
 masseAuBout = P.masseVentouse + masseTransportee;
+Iven = masseAuBout * P.L^2;
 
-% --- 3. Moment d'inertie total ramené au pivot [kg.m^2] -------------------
-J = Jbras + masseAuBout * P.R^2;
+% --- 3. Moment d'inertie total ramené au pivot [kg.m^2] ------------------
+I = Ibras + Iven;
 
-% --- 4. Couple dû à la gravité [N.m] --------------------------------------
-Mgravite = P.g * cos(theta) .* (P.bras.masse * P.bras.distCM + masseAuBout * P.R);
+% --- 4. Couple dû à la gravité [N.m] -------------------------------------
+Mgravite = P.g * cos(theta) .* (P.bras.masse * P.bras.distCM + masseAuBout * P.L);
 
-% --- 5. Couple requis de l'actionneur [N.m] --------------------------------
-M.couple   = J .* alpha + Mgravite;
-M.J        = J;
+
+% --- 5. Couple requis de l'actionneur [N.m] ------------------------------
+M.couple   = I .* alpha + Mgravite;
+M.J        = I;
 M.Mgravite = Mgravite;
+
 
 end

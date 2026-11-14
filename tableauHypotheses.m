@@ -27,7 +27,9 @@ function tab = tableauHypotheses(P)
 %   fabricant ; [Claude] hypothèse ou estimation de l'assistant IA.
 
 % Valeurs calculées à partir des paramètres (pour les montrer dans le tableau)
-[thetaPrise, thetaDepot, amplitude] = anglesExtremes(P);
+thetaPrise = P.thetaPrise;
+thetaDepot = P.thetaDepot;
+amplitude = abs(thetaDepot - thetaPrise);
 [~, V]  = massePiece(P, 1);
 Fvide   = forceMaintien(P);
 deg     = 180 / pi;                     % conversion rad -> degrés
@@ -41,7 +43,7 @@ tab = {'Paramètre', 'Symbole', 'Valeur', 'Unité', 'Source et justification', '
 
 % --- Géométrie -------------------------------------------------------------------
 tab(end+1, :) = {'Distance pivot - axe de la poulie de ventouse', 'R', ...
-    sprintf('%.1f', P.R * 1000), 'mm', ...
+    sprintf('%.1f', P.L * 1000), 'mm', ...
     '[Fourni] CAD MPS-12-005 (esquisse « Positions trous », cote D3) ; mesurée dans SolidWorks le 8 nov. 2026', ...
     'Confirmé'};
 tab(end+1, :) = {'Hauteur du pivot au-dessus de la table', 'h_pivot', ...

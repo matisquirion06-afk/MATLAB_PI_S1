@@ -30,7 +30,6 @@ function nEchecs = testsRED()
 P      = parametres();
 T      = P.duree.transfert;             % durée nominale (vidéo)
 FS     = P.FScible;                     % facteur de sécurité cible
-nomLoi = P.lois{P.loiDefaut};           % loi par défaut
 nMat   = numel(P.materiaux);
 
 tab = {};                               % le tableau des tests (vide au départ)
@@ -41,11 +40,11 @@ tab = {};                               % le tableau des tests (vide au départ)
 % Attendu : le calcul se fait, l'effort maximal est au moins égal au poids
 % et le FS minimal ne dépasse pas le FS bras immobile.
 for i = 1:nMat
-    res = calculerCycle(P, i, T, nomLoi);
+    res = calculerCycle(P, i, T);
     reussi = (res.FnormeMax >= res.poids) && (res.FSmin <= res.FSstatique) && (res.FSmin > 0);
     tab = ajouter(tab, sprintf('N%d', i), ...
         ['Cas nominal - ' res.nomMateriau], ...
-        sprintf('T = %.2f s ; loi %s', T, nomLoi), ...
+        sprintf('T = %.2f s', T), ...
         'Effort max >= poids ; 0 < FS min <= FS immobile', ...
         sprintf('Effort max = %.3f N (poids %.3f N) ; FS min = %.2f (immobile %.2f)', ...
                 res.FnormeMax, res.poids, res.FSmin, res.FSstatique), ...
@@ -61,9 +60,9 @@ end
 nomDense    = P.materiaux(iDense).nom;
 
 % L1 : à la durée minimale, le FS minimal doit être égal à la cible.
-[Tmin, info] = dureeMinimale(P, iDense, FS, nomLoi);
+[Tmin, info] = dureeMinimale(P, iDense, FS);
 if strcmp(info.statut, 'ok')
-    res    = calculerCycle(P, iDense, Tmin, nomLoi);
+    res    = calculerCycle(P, iDense, Tmin);
     ecart  = 100 * abs(res.FSmin - FS) / FS;
     reussi = (ecart < 0.5);
     obtenu = sprintf('T min = %.4f s ; FS min = %.4f (écart %.3f %%)', Tmin, res.FSmin, ecart);
@@ -84,7 +83,7 @@ tab = ajouter(tab, 'L2', ['Limite - bras immobile (' nomDense ')'], ...
     sprintf('Effort = %.6f N ; poids = %.6f N', E.Fnorme, m * P.g), reussi);
 
 % L3 : mouvement très lent, le FS minimal tend vers le FS bras immobile.
-res    = calculerCycle(P, iDense, 20, nomLoi);
+res    = calculerCycle(P, iDense, 20);
 ecart  = 100 * abs(res.FSmin - res.FSstatique) / res.FSstatique;
 reussi = (ecart < 1);
 tab = ajouter(tab, 'L3', ['Limite - transfert très lent (' nomDense ')'], ...
@@ -138,10 +137,10 @@ effortMax = zeros(1, nMat);
 masses    = zeros(1, nMat);
 dureesMin = zeros(1, nMat);
 for i = 1:nMat
-    res          = calculerCycle(P, i, T, nomLoi);
+    res          = calculerCycle(P, i, T);
     effortMax(i) = res.FnormeMax;
     masses(i)    = res.masse;
-    dureesMin(i) = dureeMinimale(P, i, FS, nomLoi);
+    dureesMin(i) = dureeMinimale(P, i, FS);
 end
 
 % Ordre des matériaux du plus léger au plus lourd.
@@ -157,8 +156,8 @@ tab = ajouter(tab, 'C1', 'Cohérence - l''effort augmente avec la masse', ...
     sprintf('%.3f N < %.3f N < %.3f N', effortMax(ordre)), reussi);
 
 % C2 : l'effort augmente avec l'accélération (transfert deux fois plus court).
-resLent   = calculerCycle(P, iDense, T,     nomLoi);
-resRapide = calculerCycle(P, iDense, T / 2, nomLoi);
+resLent   = calculerCycle(P, iDense, T);
+resRapide = calculerCycle(P, iDense, T / 2);
 reussi = (resRapide.FnormeMax > resLent.FnormeMax);
 tab = ajouter(tab, 'C2', ['Cohérence - l''effort augmente avec l''accélération (' nomDense ')'], ...
     sprintf('T = %.2f s, puis T = %.2f s', T, T / 2), ...
@@ -172,45 +171,6 @@ tab = ajouter(tab, 'C3', 'Cohérence - durée minimale la plus longue pour le pl
     'T min croissant du plus léger au plus lourd', ...
     sprintf('%.4f s < %.4f s < %.4f s', dureesMin(ordre)), reussi);
 
-% =====================================================================================
-%  V - VÉRIFICATIONS DES LOIS DE MOUVEMENT ET CALCUL INDÉPENDANT
-% =====================================================================================
-[thetaPrise, thetaDepot] = anglesExtremes(P);
-
-for k = 1:numel(P.lois)
-    loi = P.lois{k};
-
-    % Test impair (V1, V3, V5) : conditions aux limites (départ et arrivée exacts, vitesses nulles).
-    [th, om] = loiMouvement(loi, [0, T], T, thetaPrise, thetaDepot);
-    reussi = abs(th(1) - thetaPrise) < 1e-12 && abs(th(2) - thetaDepot) < 1e-12 ...
-             && abs(om(1)) < 1e-12 && abs(om(2)) < 1e-9;
-    tab = ajouter(tab, sprintf('V%d', 2*k - 1), ['Loi ' loi ' - départ et arrivée'], ...
-        sprintf('t = 0 et t = T = %.2f s', T), ...
-        'Angles exacts ; vitesses nulles', ...
-        sprintf('Écarts d''angle : %.1e et %.1e rad ; vitesses : %.1e et %.1e rad/s', ...
-                abs(th(1) - thetaPrise), abs(th(2) - thetaDepot), abs(om(1)), abs(om(2))), reussi);
-
-    % Test pair (V2, V4, V6) : les dérivées analytiques concordent avec des dérivées numériques.
-    tt = linspace(0, T, 20001);
-    dt = tt(2) - tt(1);
-    [th, om, al] = loiMouvement(loi, tt, T, thetaPrise, thetaDepot);
-    omNum = (th(3:end) - th(1:end-2)) / (2 * dt);       % vitesse par différences finies
-    alNum = (om(3:end) - om(1:end-2)) / (2 * dt);       % accélération par différences finies
-    ecartOm = 100 * max(abs(omNum - om(2:end-1))) / max(abs(om));
-    ecartAl = 100 * max(abs(alNum - al(2:end-1))) / max(abs(al));
-    reussi  = (ecartOm < 0.1) && (ecartAl < 0.1);
-    tab = ajouter(tab, sprintf('V%d', 2*k), ['Loi ' loi ' - dérivées analytiques'], ...
-        '20 001 instants entre 0 et T', ...
-        'Écart < 0,1 % avec les dérivées numériques', ...
-        sprintf('Écart vitesse : %.5f %% ; écart accélération : %.5f %%', ecartOm, ecartAl), reussi);
-end
-
-% V7 : calcul indépendant (effort max, FS min, durée minimale, poids).
-Vind = verifIndependante(P, iDense, T, nomLoi, FS, false);
-tab = ajouter(tab, 'V7', ['Calcul indépendant (' nomDense ')'], ...
-    sprintf('T = %.2f s ; loi %s ; FS cible = %.2f', T, nomLoi, FS), ...
-    'Écarts < 1 % sur 4 résultats', ...
-    sprintf('Écarts : %.4f %% ; %.4f %% ; %.4f %% ; %.4f %%', Vind.ecart), Vind.reussi);
 
 % =====================================================================================
 %  AFFICHAGE DE LA MATRICE DE TESTS

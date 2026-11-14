@@ -31,34 +31,28 @@ function K = cinematiquePiece(P, theta, omega, alpha)
 %     ni l'accélération.
 %
 %   ÉQUATIONS (position de l'axe de la poulie, puis dérivées par rapport au temps)
-%     x  = -R*cos(theta)
-%     y  =  R*sin(theta)
+%     x  = L*cos(theta)                                 [m] Position en x
+%     y  = L*sin(theta)                                 [m] Position en y
 %
-%     vx =  R*omega*sin(theta)
-%     vy =  R*omega*cos(theta)
+%     vx =  -L*omega*sin(theta)                         [m/s] Vitesse en x
+%     vy =   L*omega*cos(theta)                         [m/s] Vitesse en y
 %
-%     ax =  R*alpha*sin(theta) + R*omega^2*cos(theta)
-%     ay =  R*alpha*cos(theta) - R*omega^2*sin(theta)
+%     ax =  -L*alpha*sin(theta) - L*omega^2*cos(theta)  [m/s^2] Accélération en x
+%     ay =   L*alpha*cos(theta) - L*omega^2*sin(theta)  [m/s^2] Accélération en y
 %
-%     Dans ax et ay, le terme en alpha est l'accélération TANGENTIELLE
-%     (R*alpha, le long de la trajectoire) et le terme en omega^2 est
-%     l'accélération NORMALE ou centripète (R*omega^2, dirigée vers le pivot).
-%
-%   SOURCE : [Claude] cinématique du mouvement circulaire (matière du cours
-%   de dynamique). À vérifier par l'équipe avec le manuel du cours.
 
-R = P.R;        % [m] rayon de la trajectoire
+L = P.L;        % [m] rayon de la trajectoire
 
 % --- Position de l'axe de la poulie [m] -----------------------------------
-K.xAxe = -R * cos(theta);
-K.yAxe =  R * sin(theta);
+K.xAxe = L * cos(theta);
+K.yAxe = L * sin(theta);
 
 % --- Vitesse de la pièce [m/s] --------------------------------------------
-K.vx = R * omega .* sin(theta);
-K.vy = R * omega .* cos(theta);
+K.vx = -L * omega .* sin(theta);
+K.vy =  L * omega .* cos(theta);
 
 % --- Accélération de la pièce [m/s^2] --------------------------------------
-K.ax = R * alpha .* sin(theta) + R * omega.^2 .* cos(theta);
-K.ay = R * alpha .* cos(theta) - R * omega.^2 .* sin(theta);
+K.ax = -L * alpha .* sin(theta) - L * omega.^2 .* cos(theta);
+K.ay =  L * alpha .* cos(theta) - L * omega.^2 .* sin(theta);
 
 end

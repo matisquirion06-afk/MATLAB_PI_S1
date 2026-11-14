@@ -70,17 +70,17 @@ set(hs.ventouse, ...
 
 % --- 7. La pièce -------------------------------------------------------------------
 % (xP, yP) est le CENTRE de la pièce.
-if etape == 1
+if etape == 3
     % Posée sur le support de prise
-    xP = -P.R * mm * cos(res.thetaPrise);
+    xP = P.L * mm * cos(res.thetaPrise);
     yP = yTable + P.hAppuiPrise * mm + H/2;
-elseif etape == 2
+elseif etape == 4
     % Tenue par la ventouse : son dessus touche la lèvre
     xP = xA;
     yP = yLevre - H/2;
 else
-    % Posée sur le support de dépôt (étapes 3 et 4)
-    xP = -P.R * mm * cos(res.thetaDepot);
+    % Posée sur le support de dépôt (étapes 1 et 2)
+    xP = P.L * mm * cos(res.thetaDepot);
     yP = yTable + P.hAppuiDepot * mm + H/2;
 end
 
@@ -88,7 +88,7 @@ end
 % et que le facteur de sécurité est inférieur à 1 à cet instant, la ventouse
 % ne peut plus la retenir. On la dessine en ROUGE pour le signaler.
 couleur     = P.materiaux(res.iMat).couleur;
-prisePerdue = (etape == 2) && (res.FS(k) < 1);
+prisePerdue = (etape == 4) && (res.FS(k) < 1);
 if prisePerdue
     couleur = [0.90 0.10 0.10];
 end

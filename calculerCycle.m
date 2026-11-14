@@ -1,13 +1,12 @@
-function res = calculerCycle(P, iMat, T, nomLoi)
+function res = calculerCycle(P, iMat, T)
 % CALCULERCYCLE  Calcul complet d'un cycle pour un matériau : c'est le « chef d'orchestre ».
 %
-%   res = calculerCycle(P, iMat, T, nomLoi)
+%   res = calculerCycle(P, iMat, T)
 %
 %   ENTRÉES
 %     P        structure des paramètres (voir parametres.m)
 %     iMat     numéro du matériau (1 = Delrin, 2 = Aluminium, 3 = Acier)
 %     T        durée du transfert avec pièce [s]
-%     nomLoi   loi de mouvement : 'cubique', 'quintique' ou 'cycloidale'
 %
 %   SORTIE : structure res qui réunit TOUS les résultats.
 %
@@ -25,33 +24,33 @@ function res = calculerCycle(P, iMat, T, nomLoi)
 %   TRAÇABILITÉ (exigence de la consigne) : chaque résultat important vient
 %   d'une seule fonction, qui contient son équation, ses entrées et ses
 %   unités :
-%     res.theta, res.omega, res.alpha  -> loiMouvement.m
+%     res.theta, res.omega, res.alpha  -> DeplacementAngulaire.m
 %     res.ax, res.ay                   -> cinematiquePiece.m
-%     res.masse                        -> massePiece.m
+%     res.masse                        -> parametres.m
 %     res.Fnorme, res.Frequis          -> effortVentouse.m
 %     res.Fvide                        -> forceMaintien.m
 %     res.FS, res.FSmin                -> facteurSecurite.m
 %     res.couple                       -> momentPivot.m
 
-% --- 1. Mouvement du bras sur tout le cycle --------------------------------
-C = construireCycle(P, T, nomLoi);
+% --- 1. Mouvement du bras sur tout le cycle ------------------------------
+C = construireCycle(P, T);
 
-% --- 2. Mouvement de la pièce ----------------------------------------------
+% --- 2. Mouvement de la pièce --------------------------------------------
 K = cinematiquePiece(P, C.theta, C.omega, C.alpha);
 
-% --- 3. Masse de la pièce --------------------------------------------------
+% --- 3. Masse de la pièce ------------------------------------------------
 [m, V] = massePiece(P, iMat);
 mu     = P.materiaux(iMat).mu;
 
-% --- 4. Effort de la ventouse (2e loi de Newton) ---------------------------
+% --- 4. Effort de la ventouse (2e loi de Newton) -------------------------
 E = effortVentouse(m, P.g, K.ax, K.ay, mu);
 
-% --- 5. Capacité de la ventouse et facteur de sécurité ---------------------
+% --- 5. Capacité de la ventouse et facteur de sécurité -------------------
 [Fvide, aire] = forceMaintien(P);
 FS = facteurSecurite(Fvide, E.Frequis);
 
-% --- 6. Garder les efforts seulement quand la pièce est tenue --------------
-% C.tenue est vrai pendant l'étape 2 (transfert). Le symbole ~ veut dire
+% --- 6. Garder les efforts seulement quand la pièce est tenue ------------
+% C.tenue est vrai pendant l'étape 4 (transfert). Le symbole ~ veut dire
 % « non ». Aux autres instants, on met NaN (« Not a Number ») : Matlab ne
 % trace pas ces points et les ignore dans les calculs de min et de max.
 pasTenue = ~C.tenue;
@@ -61,13 +60,13 @@ E.Fnorme(pasTenue)  = NaN;
 E.Frequis(pasTenue) = NaN;
 FS(pasTenue)        = NaN;
 
-% --- 7. Couple requis au pivot ----------------------------------------------
+% --- 7. Couple requis au pivot -------------------------------------------
 % La pièce est portée seulement pendant le transfert : sa masse compte
 % alors dans l'inertie. (C.tenue vaut 1 ou 0 dans la multiplication.)
 masseTransportee = m * C.tenue;
 Mp = momentPivot(P, masseTransportee, C.theta, C.alpha);
 
-% --- 8. Valeurs clés ---------------------------------------------------------
+% --- 8. Valeurs clés -----------------------------------------------------
 % [valeur, indice] = max(vecteur) donne la plus grande valeur ET sa position
 % dans le vecteur. On s'en sert pour retrouver l'instant correspondant.
 [FnormeMax,  iF]  = max(E.Fnorme);
@@ -75,12 +74,11 @@ Mp = momentPivot(P, masseTransportee, C.theta, C.alpha);
 [FSmin,      iFS] = min(FS);
 [coupleMax,  iC]  = max(abs(Mp.couple));
 
-% --- 9. Ranger tous les résultats dans la structure de sortie ----------------
+% --- 9. Ranger tous les résultats dans la structure de sortie ------------
 % a) Rappel des entrées
 res.iMat        = iMat;
 res.nomMateriau = P.materiaux(iMat).nom;
 res.T           = T;
-res.nomLoi      = nomLoi;
 
 % b) Cycle et mouvement du bras
 res.t           = C.t;              % [s]

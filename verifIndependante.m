@@ -1,8 +1,8 @@
-function V = verifIndependante(P, iMat, T, nomLoi, FScible, afficher)
+function V = verifIndependante(P, iMat, T, FScible, afficher)
 % VERIFINDEPENDANTE  Vérifie les résultats importants par un calcul indépendant.
 %
-%   V = verifIndependante(P, iMat, T, nomLoi, FScible)
-%   V = verifIndependante(P, iMat, T, nomLoi, FScible, false)   sans affichage
+%   V = verifIndependante(P, iMat, T, FScible)
+%   V = verifIndependante(P, iMat, T, FScible, false)   sans affichage
 %
 %   ENTRÉES
 %     P         structure des paramètres (voir parametres.m)
@@ -52,7 +52,7 @@ function V = verifIndependante(P, iMat, T, nomLoi, FScible, afficher)
 %         T_min = racine( K / ( F_vide / (m * FS_cible) - g ) )
 %     Cette formule est comparée au résultat de la dichotomie.
 
-if nargin < 6
+if nargin < 5
     afficher = true;        % nargin = nombre d'entrées fournies à la fonction
 end
 
@@ -61,8 +61,8 @@ tolerance = 1.0;            % [%] écart relatif maximal accepté
 % =====================================================================================
 %  A. RÉSULTATS DU PROGRAMME PRINCIPAL
 % =====================================================================================
-res  = calculerCycle(P, iMat, T, nomLoi);
-Tmin = dureeMinimale(P, iMat, FScible, nomLoi);
+res  = calculerCycle(P, iMat, T);
+Tmin = dureeMinimale(P, iMat, FScible);
 
 % =====================================================================================
 %  B. CALCUL INDÉPENDANT
@@ -82,11 +82,12 @@ N  = 20001;
 t  = linspace(0, T, N);
 dt = t(2) - t(1);                                           % [s] pas de temps
 
-[thetaPrise, thetaDepot] = anglesExtremes(P);
-theta = loiMouvement(nomLoi, t, T, thetaPrise, thetaDepot); % position SEULEMENT
+thetaPrise = P.thetaPrise;
+thetaDepot = P.thetaDepot;
+theta = DeplacementAngulaire(t, T, thetaPrise, thetaDepot);
 
-x = -P.R * cos(theta);                                      % [m]
-y =  P.R * sin(theta);                                      % [m]
+x =  P.L * cos(theta);                                      % [m]
+y =  P.L * sin(theta);                                      % [m]
 
 % --- B3. Accélération par différences finies ----------------------------------------------
 % On calcule pour les points 2 à N-1 (il faut un voisin de chaque côté).
@@ -140,7 +141,7 @@ V.reussi = all(V.ecart < tolerance);
 if afficher
     fprintf('\nVÉRIFICATION PAR UN CALCUL INDÉPENDANT\n');
     fprintf('Matériau : %s ; loi : %s ; T = %.3f s ; FS cible = %.2f\n\n', ...
-            P.materiaux(iMat).nom, nomLoi, T, FScible);
+            P.materiaux(iMat).nom, T, FScible);
     fprintf('%-36s | %12s | %12s | %9s | %s\n', ...
             'Résultat', 'Programme', 'Indépendant', 'Écart (%)', 'Verdict');
     fprintf('%s\n', repmat('-', 1, 88));

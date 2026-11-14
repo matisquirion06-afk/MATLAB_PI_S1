@@ -45,8 +45,14 @@ P.g = 9.81;     % [m/s^2] accélération gravitationnelle (valeur usuelle)
 % [Fourni] CAD MPS-12-005, esquisse « Positions trous », cote D3 ; mesurée
 % dans SolidWorks par Matis le 8 nov. 2026 (« Entraxe » = 177 mm).
 % Statut : CONFIRMÉ.
-P.R = 0.177;                % [m]
+P.L = 0.177;                % [m]
 
+
+
+
+
+
+% ------------------------À VÉRIFIER---------------------------------------
 % Hauteur du pivot au-dessus de la table.
 % [Fourni] Mesurée dans SolidWorks par Matis le 8 nov. 2026 (arbre de
 % l'actionneur -> dessous du pied du support MPS-12-900).
@@ -68,6 +74,26 @@ P.dLevre = 0.0265;          % [m]
 % Statut : PROVISOIRE (à valider avec la vidéo).
 P.hAppuiPrise = 0.03335;    % [m]
 P.hAppuiDepot = 0.02625;    % [m]
+% -------------------------------------------------------------------------
+
+
+
+
+
+% Hauteur du bras lorsque celui-ci est en fin de cycle. Cette hauteur est
+% la même pour la prise et pour le dépot. 
+P.hauteurPrise = P.hAppuiPrise - P.hPivot;        % [m]                                             À VÉRIFIER
+P.hauteurDepot = P.hAppuiDepot - P.hPivot;
+
+
+% Angle initial lorsque le bras se situe au dépot
+thetaDepot = asin(P.hauteurDepot/P.L);
+P.thetaDepot = thetaDepot;
+
+% Angle lorsque le bras se situe au-dessus de la prise de la rondelle.
+P.thetaPrise = (pi) - asin(P.hauteurPrise/P.L);
+
+
 
 %% ------------------------------------------------------------------------
 %  3. PIÈCE TRANSPORTÉE (rondelle)
@@ -172,20 +198,6 @@ P.duree.attentePrise = P.images.attentePrise / P.imagesParSeconde;  % [s]
 P.duree.transfert    = P.images.transfert    / P.imagesParSeconde;  % [s]
 P.duree.attenteDepot = P.images.attenteDepot / P.imagesParSeconde;  % [s]
 P.duree.retour       = P.images.retour       / P.imagesParSeconde;  % [s]
-
-%% ------------------------------------------------------------------------
-%  7. LOI DE MOUVEMENT DU BRAS
-% -------------------------------------------------------------------------
-% Lois disponibles (voir loiMouvement.m pour les équations).
-% P.lois          : noms utilisés par le programme (sans accent).
-% P.loisAffichage : noms montrés dans l'interface.
-% Statut : PROVISOIRE (le choix de la loi et sa justification restent à
-% faire par l'équipe).
-P.lois          = {'cubique', 'quintique', 'cycloidale'};
-P.loisAffichage = {'Cubique (polynôme de degré 3)', ...
-                   'Quintique (polynôme de degré 5)', ...
-                   'Cycloïdale'};
-P.loiDefaut = 1;            % loi choisie à l'ouverture (1 = cubique)
 
 %% ------------------------------------------------------------------------
 %  8. ACTIONNEUR ET MASSES EN ROTATION (vérification facultative)

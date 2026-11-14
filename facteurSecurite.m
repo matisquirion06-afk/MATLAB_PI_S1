@@ -1,5 +1,5 @@
 function FS = facteurSecurite(Fvide, Frequis)
-% FACTEURSECURITE  Facteur de sécurité de la prise à chaque instant.
+% FACTEURSECURITE  Facteur de sécurité de la prise à chaque instant.                   EST CE QUE C'EST RÉELLEMENT UN FACTEUR DE SÉCURITÉ OU C'EST PLUS LE FAIT DE SAVOIR SI CA GLISSE?
 %
 %   FS = facteurSecurite(Fvide, Frequis)
 %

@@ -46,7 +46,7 @@ function RED_IUG()
 %            guidata(fig, S);      enregistre la structure modifiée
 %        Chaque fonction de rappel commence par lire S et, si elle l'a
 %        modifiée, finit par l'enregistrer.
-
+clc
 % --- 1. Charger tous les paramètres -------------------------------------------
 P    = parametres();
 nMat = numel(P.materiaux);              % nombre de matériaux (3)
@@ -65,7 +65,6 @@ fig = figure('Name', 'Système ramasse-dépose (RED) - Équipe 14', ...
 % --- 3. Préparer la mémoire de la fenêtre (structure S) --------------------------
 S.P          = P;                       % les paramètres
 S.iMat       = P.materiauDefaut;        % numéro du matériau choisi
-S.iLoi       = P.loiDefaut;             % numéro de la loi de mouvement choisie
 S.T          = P.duree.transfert;       % [s] durée du transfert
 S.FScible    = P.FScible;               % [-] facteur de sécurité cible
 S.valide     = false;                   % vrai si les entrées sont valides
@@ -91,7 +90,7 @@ end
 
 
 % =================================================================================
-%  GROUPE A - CONSTRUCTION DE LA FENÊTRE
+%%  GROUPE A - CONSTRUCTION DE LA FENÊTRE
 % =================================================================================
 
 function h = construireInterface(fig, S)
@@ -120,11 +119,12 @@ h.popMateriau = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
     'Callback', @(~, ~) mettreAJour(fig));
 
 % --- Choix de la loi de mouvement (menu déroulant) ---
-etiquette(pan, [0.05 0.878 0.90 0.026], 'Loi de mouvement du bras', false);
-h.popLoi = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
-    'Units', 'normalized', 'Position', [0.05 0.840 0.90 0.038], ...
-    'String', P.loisAffichage, 'Value', S.iLoi, ...
-    'Callback', @(~, ~) mettreAJour(fig));
+
+%etiquette(pan, [0.05 0.878 0.90 0.026], 'Loi de mouvement du bras', false);
+%h.popLoi = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
+%    'Units', 'normalized', 'Position', [0.05 0.840 0.90 0.038], ...
+%    'String', P.loisAffichage, 'Value', S.iLoi, ...
+%    'Callback', @(~, ~) mettreAJour(fig));
 
 % --- Durée du transfert (case à remplir) ---
 etiquette(pan, [0.05 0.797 0.63 0.028], 'Durée du transfert T (s)', false);
@@ -358,7 +358,6 @@ S.enMarche = false;                     % toute animation en cours est arrêtée
 
 % --- 1. Lire les choix de l'utilisateur ------------------------------------------
 S.iMat  = get(S.h.popMateriau, 'Value');    % numéro de la ligne choisie
-S.iLoi  = get(S.h.popLoi, 'Value');
 T       = lireNombre(S.h.editT);
 FScible = lireNombre(S.h.editFS);
 
@@ -380,20 +379,17 @@ S.T       = T;
 S.FScible = FScible;
 
 % --- 3. Calculer le cycle pour les trois matériaux -----------------------------------
-nomLoi = S.P.lois{S.iLoi};
 for i = 1:numel(S.P.materiaux)
-    S.R{i} = calculerCycle(S.P, i, S.T, nomLoi);
+    S.R{i} = calculerCycle(S.P, i, S.T);
 end
 
 % --- 4. L'optimisation précédente est-elle encore valable ? ---------------------------
-% La durée minimale dépend du facteur de sécurité cible et de la loi de
-% mouvement. Si l'un des deux a changé, on efface l'ancien résultat pour
-% ne pas afficher une valeur périmée.
-if ~(S.FScible == S.optFScible && S.iLoi == S.optLoi)
+% La durée minimale dépend du facteur de sécurité cible. Si il a changé, on
+% efface l'ancien résultat pour ne pas afficher une valeur périmée.
+if ~(S.FScible == S.optFScible)
     S.Tmin(:)    = NaN;
     S.infoOpt    = cell(1, numel(S.P.materiaux));
     S.optFScible = NaN;
-    S.optLoi     = NaN;
 end
 
 % --- 5. Redessiner l'animation au début du cycle --------------------------------------
@@ -469,7 +465,7 @@ limites(5, :) = [0, max(1.7 * res.FSstatique, 1.7 * S.FScible)];
 % Case « zoom » cochée : on montre seulement l'étape 2 (le transfert), avec
 % une petite marge de chaque côté. Sinon : le cycle complet.
 if get(h.caseZoom, 'Value') == 1
-    marge    = 0.08 * (res.tFinEtape(2) - res.tDebutEtape(2));
+    marge    = 0.08 * (res.tFinEtape(4) - res.tDebutEtape(4));
     limTemps = [res.tDebutEtape(2) - marge, res.tFinEtape(2) + marge];
 else
     limTemps = [0, res.dureeCycle];
@@ -588,7 +584,7 @@ else
 
     % Le résultat est-il réaliste pour l'actionneur ?
     if S.P.actionneur.verifier
-        resMin = calculerCycle(S.P, i, Tmin, S.P.lois{S.optLoi});
+        resMin = calculerCycle(S.P, i, Tmin);
         if Tmin < S.P.actionneur.dureeMin
             lignes{end+1} = sprintf('ATTENTION : sous la limite de l''actionneur (%.3f s).', ...
                                     S.P.actionneur.dureeMin);
@@ -856,14 +852,12 @@ if ~S.valide
 end
 S.enMarche = false;
 
-nomLoi = S.P.lois{S.iLoi};
 for i = 1:numel(S.P.materiaux)
-    [S.Tmin(i), S.infoOpt{i}] = dureeMinimale(S.P, i, S.FScible, nomLoi);
+    [S.Tmin(i), S.infoOpt{i}] = dureeMinimale(S.P, i, S.FScible);
 end
 
 % On note avec quelles entrées l'optimisation a été faite (voir mettreAJour).
 S.optFScible = S.FScible;
-S.optLoi     = S.iLoi;
 guidata(fig, S);
 
 afficherTableau(S);
@@ -958,7 +952,7 @@ S = guidata(fig);
 nEchecs = testsRED();
 
 if S.valide
-    verifIndependante(S.P, S.iMat, S.T, S.P.lois{S.iLoi}, S.FScible);
+    verifIndependante(S.P, S.iMat, S.T, S.FScible);
 end
 
 if nEchecs == 0
