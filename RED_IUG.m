@@ -466,7 +466,7 @@ limites(5, :) = [0, max(1.7 * res.FSstatique, 1.7 * S.FScible)];
 % une petite marge de chaque côté. Sinon : le cycle complet.
 if get(h.caseZoom, 'Value') == 1
     marge    = 0.08 * (res.tFinEtape(4) - res.tDebutEtape(4));
-    limTemps = [res.tDebutEtape(2) - marge, res.tFinEtape(2) + marge];
+    limTemps = [res.tDebutEtape(4) - marge, res.tFinEtape(4) + marge];
 else
     limTemps = [0, res.dureeCycle];
 end

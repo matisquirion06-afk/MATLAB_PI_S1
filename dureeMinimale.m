@@ -49,7 +49,7 @@ info.FSobtenu   = NaN;      % Aucun facteur de sécurité minimal pour l'instant
 % sécurité est déjà insuffisant, ralentir le bras ne changera rien.
 
 m     = massePiece(P, iMat);            % [kg] Voir massePiece.m
-Fvide = forceMaintien(P);               % [N]  Voir forceMaintient.m
+Fvide = forceMaintien(P);               % [N]  Voir forceMaintien.m
 info.FSstatique = Fvide / (m * P.g);    % [-]  Facteur de sécurité au repos
 
 if info.FSstatique <= FScible       % La pièce n'est pas soutenu au repos

@@ -26,7 +26,7 @@ function res = calculerCycle(P, iMat, T)
 %   unités :
 %     res.theta, res.omega, res.alpha  -> DeplacementAngulaire.m
 %     res.ax, res.ay                   -> cinematiquePiece.m
-%     res.masse                        -> parametres.m
+%     res.masse                        -> massePiece.m
 %     res.Fnorme, res.Frequis          -> effortVentouse.m
 %     res.Fvide                        -> forceMaintien.m
 %     res.FS, res.FSmin                -> facteurSecurite.m

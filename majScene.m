@@ -16,9 +16,9 @@ function majScene(hs, P, res, k)
 %     fluide et synchronisée avec les tracés.
 %
 %   OÙ EST LA PIÈCE ?
-%     Étape 1 (attente à la prise)   posée sur le support de prise
-%     Étape 2 (transfert)            collée sous la ventouse
-%     Étapes 3 et 4                  posée sur le support de dépôt
+%     Étape 3 (attente à la prise)   posée sur le support de prise
+%     Étape 4 (transfert)            collée sous la ventouse
+%     Étapes 1 et 2                  posée sur le support de dépôt
 %
 %   LIMITE DE L'ANIMATION
 %     L'animation montre le mouvement COMMANDÉ. Si le facteur de sécurité

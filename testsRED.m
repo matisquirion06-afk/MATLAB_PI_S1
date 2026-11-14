@@ -92,10 +92,8 @@ tab = ajouter(tab, 'L3', ['Limite - transfert très lent (' nomDense ')'], ...
     reussi);
 
 % L4 : géométrie impossible (support plus haut que ce que le bras peut atteindre).
-Pfaux = P;
-Pfaux.hAppuiPrise = 1.0;                % 1 m : valeur volontairement absurde
 try
-    anglesExtremes(Pfaux);
+    hauteurAxePoulie(P, 1.0);           % 1 m : valeur volontairement absurde
     reussi = false;                     % aucune erreur signalée : le test échoue
     obtenu = 'Aucune erreur signalée';
 catch erreur
