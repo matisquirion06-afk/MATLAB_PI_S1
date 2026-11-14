@@ -70,7 +70,10 @@ S.FScible    = P.FScible;               % [-] facteur de sécurité cible
 S.valide     = false;                   % vrai si les entrées sont valides
 S.R          = cell(1, nMat);           % résultats : S.R{i} pour le matériau i
 S.scene      = [];                      % poignées de l'animation
+S.Tretour    = P.duree.retour;          % [s] durée du retour à vide utilisée
 S.Tmin       = NaN(1, nMat);            % [s] durées minimales (NaN = pas calculées)
+S.TretourMin = NaN;                     % [s] durée minimale du retour à vide
+S.infoRetour = [];                      % informations sur l'optimisation du retour
 S.infoOpt    = cell(1, nMat);           % informations sur l'optimisation
 S.optFScible = NaN;                     % FS cible utilisé pour l'optimisation
 S.optLoi     = NaN;                     % loi utilisée pour l'optimisation
@@ -380,7 +383,7 @@ S.FScible = FScible;
 
 % --- 3. Calculer le cycle pour les trois matériaux -----------------------------------
 for i = 1:numel(S.P.materiaux)
-    S.R{i} = calculerCycle(S.P, i, S.T);
+    S.R{i} = calculerCycle(S.P, i, S.T, S.Tretour);
 end
 
 % --- 4. L'optimisation précédente est-elle encore valable ? ---------------------------
@@ -388,6 +391,8 @@ end
 % efface l'ancien résultat pour ne pas afficher une valeur périmée.
 if ~(S.FScible == S.optFScible)
     S.Tmin(:)    = NaN;
+    S.TretourMin = NaN;
+    S.infoRetour = [];
     S.infoOpt    = cell(1, numel(S.P.materiaux));
     S.optFScible = NaN;
 end
@@ -571,20 +576,37 @@ lignes = {sprintf('OPTIMISATION - %s, FS cible = %.2f', res.nomMateriau, S.optFS
 if strcmp(info.statut, 'impossible')
     lignes{end+1} = info.message;
 else
-    % Effet sur le cycle : seule la durée du transfert change.
-    cycleMin = res.dureeCycle - res.T + Tmin;
-    lignes{end+1} = sprintf('Durée minimale du transfert : %.3f s', Tmin);
-    lignes{end+1} = sprintf('   (durée actuelle : %.3f s)', res.T);
+    % --- Étape 4 : le transfert ---
+    lignes{end+1} = sprintf('Transfert (étape 4) : %.3f s -> %.3f s', res.T, Tmin);
+    lignes{end+1} = sprintf('   Limite active : %s', upper(info.limite));
+    if ~isnan(info.Tcouple)
+        lignes{end+1} = sprintf('   ventouse %.3f s | couple %.3f s | fréq. %.3f s', ...
+                                info.Tventouse, info.Tcouple, info.Tfrequence);
+    end
+
+    % --- Étape 2 : le retour à vide ---
+    % Sans rondelle, il n'y a pas de critère de succion : seul
+    % l'actionneur limite cette rotation.
+    TretourMin = S.TretourMin;
+    if isnan(TretourMin)
+        TretourMin = res.Tretour;       % pas encore calculé
+    else
+        lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s -> %.3f s', ...
+                                res.Tretour, TretourMin);
+        lignes{end+1} = '   Limite active : COUPLE (aucune rondelle portée)';
+    end
+
+    % --- Effet sur le cycle complet ---
+    % Les deux attentes ne changent pas ; les deux rotations, oui.
+    cycleMin = res.dureeCycle - res.T + Tmin - res.Tretour + TretourMin;
     lignes{end+1} = sprintf('Cycle : %.2f s -> %.2f s', res.dureeCycle, cycleMin);
     lignes{end+1} = sprintf('Cadence : %.2f -> %.2f pièces/min', res.cadence, 60 / cycleMin);
 
-    if strcmp(info.statut, 'non_limitant')
-        lignes{end+1} = 'La ventouse ne limite pas la durée.';
-    end
-
-    % Le résultat est-il réaliste pour l'actionneur ?
+    % --- Vérification : le résultat est-il bien réalisable ? ---
+    % Ce contrôle doit maintenant rester muet. S'il parle encore, c'est
+    % que les contraintes de dureeMinimale.m sont incomplètes.
     if S.P.actionneur.verifier
-        resMin = calculerCycle(S.P, i, Tmin);
+        resMin = calculerCycle(S.P, i, Tmin, TretourMin);
         if Tmin < S.P.actionneur.dureeMin
             lignes{end+1} = sprintf('ATTENTION : sous la limite de l''actionneur (%.3f s).', ...
                                     S.P.actionneur.dureeMin);
@@ -835,16 +857,25 @@ end
 % =================================================================================
 
 function retablirDuree(fig)
-% RETABLIRDUREE  Remet dans la case la durée du transfert mesurée dans la vidéo.
+% RETABLIRDUREE  Remet les deux rotations à leur durée mesurée dans la vidéo.
 S = guidata(fig);
+S.Tretour = S.P.duree.retour;       % [s] on annule aussi l'optimisation du retour
+guidata(fig, S);
 set(S.h.editT, 'String', sprintf('%.3f', S.P.duree.transfert));
 mettreAJour(fig);
 end
 
 
 function optimiser(fig)
-% OPTIMISER  Calcule la durée minimale du transfert pour les trois matériaux
+% OPTIMISER  Calcule la durée minimale des DEUX rotations
 %            (bouton « Optimiser : durée minimale »).
+%
+%   Étape 4 (transfert) : limitée par la ventouse ET par l'actionneur,
+%   puisque la rondelle est portée. Une durée par matériau.
+%
+%   Étape 2 (retour à vide) : aucune rondelle, donc aucun critère de
+%   succion. Seul l'actionneur limite, et la durée est la même pour les
+%   trois matériaux.
 
 S = guidata(fig);
 if ~S.valide
@@ -854,6 +885,12 @@ S.enMarche = false;
 
 for i = 1:numel(S.P.materiaux)
     [S.Tmin(i), S.infoOpt{i}] = dureeMinimale(S.P, i, S.FScible);
+end
+
+% Retour à vide : masse transportée nulle, du dépôt vers la prise.
+[S.TretourMin, S.infoRetour] = dureeCouple(S.P, 0, S.P.thetaDepot, S.P.thetaPrise);
+if S.P.actionneur.verifier
+    S.TretourMin = max(S.TretourMin, S.P.actionneur.dureeMin);
 end
 
 % On note avec quelles entrées l'optimisation a été faite (voir mettreAJour).
@@ -867,8 +904,9 @@ end
 
 
 function appliquerDureeMinimale(fig)
-% APPLIQUERDUREEMINIMALE  Utilise la durée minimale trouvée comme durée du transfert.
-%   L'animation et les tracés montrent alors le cycle optimisé.
+% APPLIQUERDUREEMINIMALE  Utilise les durées minimales trouvées pour les
+%   DEUX rotations. L'animation et les tracés montrent alors le cycle
+%   optimisé.
 
 S    = guidata(fig);
 Tmin = S.Tmin(S.iMat);
@@ -882,8 +920,15 @@ end
 
 % On arrondit VERS LE HAUT au millième de seconde (fonction ceil), pour
 % rester du côté sûr : une durée un peu plus longue donne un FS un peu
-% plus grand que la cible, jamais plus petit.
+% plus grand que la cible, jamais plus petit, et un couple un peu plus
+% petit que la capacité de l'actionneur, jamais plus grand.
 Tapplique = ceil(Tmin * 1000) / 1000;
+
+% Le retour à vide suit la même règle d'arrondi.
+if ~isnan(S.TretourMin)
+    S.Tretour = ceil(S.TretourMin * 1000) / 1000;
+    guidata(fig, S);
+end
 
 set(S.h.editT, 'String', sprintf('%.3f', Tapplique));
 mettreAJour(fig);

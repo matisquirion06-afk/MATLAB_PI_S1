@@ -61,7 +61,14 @@ tolerance = 1.0;            % [%] écart relatif maximal accepté
 %  A. RÉSULTATS DU PROGRAMME PRINCIPAL
 % =====================================================================================
 res  = calculerCycle(P, iMat, T);
-Tmin = dureeMinimale(P, iMat, FScible);
+[~, infoMin] = dureeMinimale(P, iMat, FScible);
+
+% [Claude] On compare la durée imposée par la VENTOUSE, pas la durée finale
+% retenue : depuis le 14 nov. 2026, dureeMinimale.m combine la ventouse,
+% le couple et la fréquence, et la formule directe ci-dessous ne décrit que
+% la ventouse. Comparer la durée finale à cette formule reviendrait à
+% comparer deux grandeurs différentes.
+Tventouse = infoMin.Tventouse;
 
 % =====================================================================================
 %  B. CALCUL INDÉPENDANT
@@ -118,13 +125,44 @@ end
 E0 = effortVentouse(masse, P.g, 0, 0, mu);
 poids_ind = masse * P.g;
 
+% --- B7. Durée minimale imposée par le couple de l'actionneur ---------------------------------
+% [Claude] Vérification ajoutée le 14 nov. 2026 pour dureeCouple.m.
+% À la durée que la fonction annonce comme minimale, le couple maximal
+% requis doit valoir exactement la capacité de l'actionneur. On le
+% recalcule ici par un chemin complètement différent : l'accélération
+% angulaire vient de DIFFÉRENCES FINIES sur theta(t), et l'inertie est
+% réécrite à la main, sans passer par momentPivot.m.
+Tcouple = dureeCouple(P, masse, thetaPrise, thetaDepot);
+
+if isnan(Tcouple)
+    coupleMax_ind = NaN;
+    coupleVise    = NaN;
+else
+    tc  = linspace(0, Tcouple, N);
+    dtc = tc(2) - tc(1);                                    % [s]
+    thc = DeplacementAngulaire(tc, Tcouple, thetaPrise, thetaDepot);
+
+    alphaC = (thc(c+1) - 2*thc(c) + thc(c-1)) / dtc^2;      % [rad/s^2]
+
+    masseAuBout = P.masseVentouse + masse;                  % [kg]
+    Jind = P.bras.masse * (P.bras.longueur^2 / 12 + P.bras.distCM^2) ...
+         + masseAuBout * P.L^2;                             % [kg.m^2]
+    Mgrav = P.g * cos(thc(c)) * (P.bras.masse * P.bras.distCM ...
+          + masseAuBout * P.L);                             % [N.m]
+
+    coupleMax_ind = max(abs(Jind * alphaC + Mgrav));        % [N.m]
+    coupleVise    = P.actionneur.couple;                    % [N.m]
+end
+
 % =====================================================================================
 %  C. COMPARAISON
 % =====================================================================================
 V.noms        = {'Effort total maximal (N)', 'FS minimal (-)', ...
-                 'Durée minimale T min (s)', 'Effort bras immobile = poids (N)'};
-V.programme   = [res.FnormeMax, res.FSmin, Tmin,     E0.Fnorme];
-V.independant = [effortMax_ind, FSmin_ind, Tmin_ind, poids_ind];
+                 'Durée min. imposée par la ventouse (s)', ...
+                 'Effort bras immobile = poids (N)', ...
+                 'Couple max à la durée min. couple (N.m)'};
+V.programme   = [res.FnormeMax, res.FSmin, Tventouse, E0.Fnorme, coupleVise];
+V.independant = [effortMax_ind, FSmin_ind, Tmin_ind,  poids_ind, coupleMax_ind];
 V.ecart       = 100 * abs(V.programme - V.independant) ./ abs(V.independant);    % [%]
 
 % Une comparaison avec NaN (pas de solution) n'est pas un échec si les DEUX
