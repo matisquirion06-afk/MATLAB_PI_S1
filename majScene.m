@@ -16,9 +16,13 @@ function majScene(hs, P, res, k)
 %     fluide et synchronisée avec les tracés.
 %
 %   OÙ EST LA PIÈCE ?
-%     Étape 3 (attente à la prise)   posée sur le support de prise
-%     Étape 4 (transfert)            collée sous la ventouse
-%     Étapes 1 et 2                  posée sur le support de dépôt
+%     Étapes 1, 2 et 3   posée sur le support de prise (elle attend)
+%     Étape 4            collée sous la ventouse, transportée vers le dépôt
+%
+%     Le programme ne suit QU'UNE rondelle à la fois. Au début du cycle, le
+%     bras est au dépôt mais les mains vides : la rondelle qu'il va chercher
+%     attend déjà au magasin, à gauche. La rondelle déposée au cycle
+%     précédent n'est pas dessinée.
 %
 %   LIMITE DE L'ANIMATION
 %     L'animation montre le mouvement COMMANDÉ. Si le facteur de sécurité
@@ -46,10 +50,16 @@ r      = hs.rPoulie;                    % rayon dessiné des poulies
 set(hs.bras, 'XData', [0, xA], 'YData', [0, yA]);
 
 % --- 4. La courroie : deux brins parallèles au bras -------------------------------
-% (nx, ny) est un vecteur de longueur 1 perpendiculaire au bras. Chaque brin
+% (nx, ny) est un vecteur de longueur 1 PERPENDICULAIRE au bras. Chaque brin
 % est décalé du rayon de la poulie, d'un côté ou de l'autre du bras.
-nx = sin(theta);
-ny = cos(theta);
+%
+% Le bras pointe dans la direction (cos theta, sin theta). Le vecteur
+% perpendiculaire est (-sin theta, cos theta) : leur produit scalaire vaut
+% -cos*sin + sin*cos = 0. Avec (+sin theta, cos theta), le produit vaut
+% sin(2*theta), qui ne s'annule qu'a 0, 90 et 180 degres : ailleurs les deux
+% brins se rabattaient sur le bras et disparaissaient sous son trait epais.
+nx = -sin(theta);
+ny =  cos(theta);
 set(hs.courroie1, 'XData', [0, xA] + r*nx, 'YData', [0, yA] + r*ny);
 set(hs.courroie2, 'XData', [0, xA] - r*nx, 'YData', [0, yA] - r*ny);
 
@@ -70,18 +80,16 @@ set(hs.ventouse, ...
 
 % --- 7. La pièce -------------------------------------------------------------------
 % (xP, yP) est le CENTRE de la pièce.
-if etape == 3
-    % Posée sur le support de prise
-    xP = P.L * mm * cos(res.thetaPrise);
-    yP = yTable + P.hAppuiPrise * mm + H/2;
-elseif etape == 4
-    % Tenue par la ventouse : son dessus touche la lèvre
+if etape == 4
+    % Transfert : tenue par la ventouse, son dessus touche la lèvre
     xP = xA;
     yP = yLevre - H/2;
 else
-    % Posée sur le support de dépôt (étapes 1 et 2)
-    xP = P.L * mm * cos(res.thetaDepot);
-    yP = yTable + P.hAppuiDepot * mm + H/2;
+    % Étapes 1, 2 et 3 : la PROCHAINE rondelle attend au magasin, du côté
+    % de la prise. Celle qui vient d'être déposée n'est plus dessinée : le
+    % programme ne suit qu'une rondelle à la fois.
+    xP = P.L * mm * cos(res.thetaPrise);
+    yP = yTable + P.hAppuiPrise * mm + H/2;
 end
 
 % Couleur de la pièce : celle du matériau. Exception : si la pièce est tenue
