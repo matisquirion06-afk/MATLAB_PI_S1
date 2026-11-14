@@ -50,10 +50,16 @@ r      = hs.rPoulie;                    % rayon dessiné des poulies
 set(hs.bras, 'XData', [0, xA], 'YData', [0, yA]);
 
 % --- 4. La courroie : deux brins parallèles au bras -------------------------------
-% (nx, ny) est un vecteur de longueur 1 perpendiculaire au bras. Chaque brin
+% (nx, ny) est un vecteur de longueur 1 PERPENDICULAIRE au bras. Chaque brin
 % est décalé du rayon de la poulie, d'un côté ou de l'autre du bras.
-nx = sin(theta);
-ny = cos(theta);
+%
+% Le bras pointe dans la direction (cos theta, sin theta). Le vecteur
+% perpendiculaire est (-sin theta, cos theta) : leur produit scalaire vaut
+% -cos*sin + sin*cos = 0. Avec (+sin theta, cos theta), le produit vaut
+% sin(2*theta), qui ne s'annule qu'a 0, 90 et 180 degres : ailleurs les deux
+% brins se rabattaient sur le bras et disparaissaient sous son trait epais.
+nx = -sin(theta);
+ny =  cos(theta);
 set(hs.courroie1, 'XData', [0, xA] + r*nx, 'YData', [0, yA] + r*ny);
 set(hs.courroie2, 'XData', [0, xA] - r*nx, 'YData', [0, yA] - r*ny);
 
