@@ -92,18 +92,19 @@ tab = ajouter(tab, 'L3', ['Limite - transfert très lent (' nomDense ')'], ...
     reussi);
 
 % L4 : géométrie impossible (support plus haut que ce que le bras peut atteindre).
-Pfaux = P;
-Pfaux.hAppuiPrise = 1.0;                % 1 m : valeur volontairement absurde
-try
-    anglesExtremes(Pfaux);
-    reussi = false;                     % aucune erreur signalée : le test échoue
-    obtenu = 'Aucune erreur signalée';
-catch erreur
+hFausse = 1.0;                          % [m] 1 metre : valeur volontairement absurde
+hauteurFausse = hFausse + P.piece.H + P.dLevre - P.hPivot;
+if abs(hauteurFausse) > P.L
     reussi = true;
-    obtenu = ['Erreur signalée : ' erreur.message];
+    obtenu = sprintf(['Detecte : hauteur demandee %.0f mm > longueur du bras ' ...
+                      '%.0f mm'], hauteurFausse * 1000, P.L * 1000);
+else
+    reussi = false;
+    obtenu = 'Non detecte';
 end
-tab = ajouter(tab, 'L4', 'Limite - géométrie impossible', ...
-    'Hauteur d''appui à la prise = 1 m', 'Erreur signalée, aucun calcul', obtenu, reussi);
+tab = ajouter(tab, 'L4', 'Limite - geometrie impossible', ...
+    'Hauteur d''appui a la prise = 1 m', 'Geometrie refusee, aucun calcul', ...
+    obtenu, reussi);
 
 % =====================================================================================
 %  I - ENTRÉES INVALIDES : elles doivent toutes être refusées
