@@ -54,7 +54,6 @@ fprintf(fid, 'tableau des hypothèses (section 6) restent à confirmer.\n\n');
 % --- 1. Entrées --------------------------------------------------------------------------
 fprintf(fid, '1. ENTRÉES CHOISIES DANS L''INTERFACE\n');
 fprintf(fid, '   Matériau de la pièce      : %s\n', res.nomMateriau);
-fprintf(fid, '   Loi de mouvement          : %s\n', res.nomLoi);
 fprintf(fid, '   Durée du transfert T      : %.3f s\n', res.T);
 fprintf(fid, '   Facteur de sécurité cible : %.2f\n\n', FScible);
 
