@@ -247,13 +247,24 @@ h.txtValeurs = uicontrol('Parent', panV, 'Style', 'text', ...
 
 % b) Tableau comparatif des trois matériaux (une ligne par matériau).
 % La largeur des colonnes est réglée plus bas par ajusterTableau.
+% [Claude] Depuis le 18 nov. 2026, les deux durées minimales sont
+% affichées séparément (point d de la consigne, section 5.5) :
+%   T FS     : durée minimale pour que FS >= FS cible (la ventouse tient) ;
+%              c'est la valeur que demande la consigne ;
+%   T couple : durée minimale que permet le couple de l'actionneur ;
+%   T min    : la plus longue des limites, donc la durée retenue.
+% Abréviations : m = masse de la pièce ; F max = effort maximal de la
+% ventouse sur la pièce. La colonne « Poids » a été retirée pour faire de
+% la place : le poids du matériau choisi reste affiché dans les valeurs
+% clés (poids = m x g).
 h.tableau = uitable('Parent', panV, ...
     'Units', 'normalized', 'Position', [0.365 0.52 0.627 0.46], ...
-    'ColumnName', {'Matériau', 'Masse (g)', 'Poids (N)', 'Effort max (N)', 'FS min', 'T min (s)'}, ...
+    'ColumnName', {'Matériau', 'm (g)', 'F max (N)', 'FS min', ...
+                   'T FS (s)', 'T couple', 'T min (s)'}, ...
     'RowName', [], ...
     'FontSize', 9, ...
-    'Data', cell(numel(P.materiaux), 6));
-ajusterTableau(h.tableau, [0.21 0.16 0.15 0.22 0.12 0.14]);
+    'Data', cell(numel(P.materiaux), 7));
+ajusterTableau(h.tableau, [0.17 0.11 0.155 0.115 0.14 0.155 0.155]);
 
 % c) Résultat de l'optimisation (texte sur plusieurs lignes)
 h.txtOptim = uicontrol('Parent', panV, 'Style', 'text', ...
@@ -636,30 +647,34 @@ function afficherTableau(S)
 %   « impossible » au lieu des résultats.
 
 nMat    = numel(S.P.materiaux);
-donnees = cell(nMat, 6);                % tableau de cellules (texte)
+donnees = cell(nMat, 7);                % tableau de cellules (texte)
 
 for i = 1:nMat
-    m = massePiece(S.P, i);             % la masse ne dépend pas du couple
+    m    = massePiece(S.P, i);          % la masse ne dépend pas du couple
+    info = S.infoOpt{i};
     donnees{i, 1} = S.P.materiaux(i).nom;
     donnees{i, 2} = sprintf('%.1f', m * 1000);
-    donnees{i, 3} = sprintf('%.3f', m * S.P.g);
 
     if isempty(S.R{i})
         % Couple insuffisant pour ce matériau : aucun cycle possible
+        donnees{i, 3} = '-';
         donnees{i, 4} = '-';
-        donnees{i, 5} = '-';
     else
-        donnees{i, 4} = sprintf('%.3f', S.R{i}.FnormeMax);
-        donnees{i, 5} = sprintf('%.2f', S.R{i}.FSmin);
+        donnees{i, 3} = sprintf('%.3f', S.R{i}.FnormeMax);
+        donnees{i, 4} = sprintf('%.2f', S.R{i}.FSmin);
     end
+
+    % Les trois durées minimales du transfert (voir construireInterface).
+    donnees{i, 5} = texteDuree(info.Tventouse);
+    donnees{i, 6} = texteDuree(info.Tcouple);
 
     % En mode vidéo, le cycle est calculé avec les durées mesurées même si
     % le couple choisi ne permettrait pas de les atteindre : la durée
     % minimale peut donc être impossible alors que le cycle existe.
     if isnan(S.Tmin(i))
-        donnees{i, 6} = 'impossible';
+        donnees{i, 7} = 'impossible';
     else
-        donnees{i, 6} = sprintf('%.3f', S.Tmin(i));
+        donnees{i, 7} = sprintf('%.3f', S.Tmin(i));
     end
 end
 
@@ -687,23 +702,25 @@ if S.modeDurees == 1
     lignes = {sprintf('DURÉES DES ROTATIONS - %s, couple %.2f N.m', ...
                       res.nomMateriau, P.actionneur.couple)};
 
-    % Étape 4 : le transfert, et la contrainte qui l'a fixé
-    lignes{end+1} = sprintf('Transfert (étape 4) : %.3f s', res.T);
-    lignes{end+1} = sprintf('   Limite active : %s', upper(info.limite));
-    if ~isnan(info.Tcouple)
-        lignes{end+1} = sprintf('   ventouse %.3f s | couple %.3f s | fréq. %.3f s', ...
-                                info.Tventouse, info.Tcouple, info.Tfrequence);
-    end
+    % Étape 4 : les deux durées minimales du transfert, puis la durée
+    % retenue (point d de la consigne : la durée minimale compatible avec
+    % le facteur de sécurité, c'est la limite de la VENTOUSE).
+    lignes{end+1} = 'Transfert minimal (étape 4) :';
+    lignes{end+1} = sprintf('   selon la ventouse (FS >= %.2f) : %s s', S.FScible, ...
+                            texteDuree(info.Tventouse));
+    lignes{end+1} = sprintf('   selon le couple (%.2f N.m) : %s s', P.actionneur.couple, ...
+                            texteDuree(info.Tcouple));
+    lignes{end+1} = sprintf('   RETENU : %.3f s (limite : %s, arrondi au ms supérieur)', ...
+                            res.T, upper(info.limite));
 
     % Étape 2 : le retour à vide. Sans rondelle, aucun critère de succion :
     % seul l'actionneur limite cette rotation.
-    lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s', res.Tretour);
-    lignes{end+1} = '   Limite active : COUPLE (aucune rondelle portée)';
+    lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s (limite : COUPLE, sans rondelle)', ...
+                            res.Tretour);
 
     % Le cycle complet, comparé au montage actuel
-    lignes{end+1} = sprintf('Cycle : %.2f s, soit %.2f pièces/min', ...
-                            res.dureeCycle, res.cadence);
-    lignes{end+1} = sprintf('   (vidéo : %.2f s, soit %.2f pièces/min)', cVid, 60 / cVid);
+    lignes{end+1} = sprintf('Cycle : %.2f s (%.2f pièces/min) ; vidéo : %.2f s (%.2f)', ...
+                            res.dureeCycle, res.cadence, cVid, 60 / cVid);
 
 else
     % ---------- Durées MESURÉES (vidéo) ou IMPOSÉES (utilisateur) ----------
@@ -714,12 +731,8 @@ else
     end
 
     lignes{end+1} = sprintf('Transfert (étape 4) : %.3f s', res.T);
-    if isnan(S.Tmin(i))
-        lignes{end+1} = sprintf('   minimum à %.2f N.m : impossible (couple insuffisant)', ...
-                                P.actionneur.couple);
-    else
-        lignes{end+1} = sprintf('   minimum à %.2f N.m : %.3f s', P.actionneur.couple, S.Tmin(i));
-    end
+    lignes{end+1} = sprintf('   min. ventouse (FS >= %.2f) : %s s | min. couple : %s s', ...
+                            S.FScible, texteDuree(info.Tventouse), texteDuree(info.Tcouple));
 
     lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s', res.Tretour);
     if isnan(S.TretourMin)
@@ -742,6 +755,19 @@ end
 
 set(S.h.txtOptim, 'String', lignes);
 
+end
+
+
+function texte = texteDuree(T)
+% TEXTEDUREE  Écrit une durée [s] avec 3 décimales, ou « - » si elle n'existe pas.
+%   Une durée vaut NaN quand la contrainte correspondante n'a pas pu être
+%   calculée (par exemple : couple insuffisant, ou vérification du couple
+%   désactivée avec P.actionneur.verifier = false).
+if isnan(T)
+    texte = '-';
+else
+    texte = sprintf('%.3f', T);
+end
 end
 
 
@@ -836,7 +862,7 @@ end
 set(h.txtValeurs, 'String', 'Aucun résultat : entrée invalide.');
 set(h.txtInstant, 'String', '');
 set(h.txtOptim,   'String', '');
-set(h.tableau,    'Data', cell(numel(S.P.materiaux), 6));
+set(h.tableau,    'Data', cell(numel(S.P.materiaux), 7));
 
 % Animation
 cla(h.axScene);
