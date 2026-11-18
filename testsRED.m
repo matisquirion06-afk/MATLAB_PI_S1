@@ -105,6 +105,26 @@ tab = ajouter(tab, 'L1', ['Limite - transfert à la durée minimale (' nomDense 
     sprintf('T = T min ; FS cible = %.2f ; couple max = %.2f N.m', FS, P.actionneur.couple), ...
     'FS >= cible ET couple <= limite ; contrainte active serrée (< 0,5 %)', obtenu, reussi);
 
+% L7 : point d) de la consigne. À la durée minimale imposée par la
+%      VENTOUSE (T FS), le FS minimal doit valoir le FS cible : c'est la
+%      définition même de « la durée de transfert minimale compatible
+%      avec le facteur de sécurité ».
+%      [Claude] Test ajouté le 18 nov. 2026, avec l'affichage séparé des
+%      durées « ventouse » et « couple » dans l'interface.
+if ~isnan(info.Tventouse)
+    resFS  = calculerCycle(P, iDense, info.Tventouse);
+    ecart  = abs(resFS.FSmin - FS) / FS * 100;
+    reussi = (ecart < 0.5);
+    obtenu = sprintf('T FS = %.4f s ; FS min = %.3f (écart %.3f %%)', ...
+                     info.Tventouse, resFS.FSmin, ecart);
+else
+    reussi = false;
+    obtenu = 'T FS non calculée';
+end
+tab = ajouter(tab, 'L7', ['Limite - durée minimale selon la ventouse, point d (' nomDense ')'], ...
+    sprintf('T = T FS ; FS cible = %.2f', FS), ...
+    'FS min = FS cible (écart < 0,5 %)', obtenu, reussi);
+
 % L5 : le retour à vide doit être PLUS RAPIDE que le transfert chargé.
 %      [Claude] Test ajouté le 14 nov. 2026. C'est le symptôme qui a révélé
 %      l'erreur : le retour affichait 0,817 s (valeur vidéo jamais

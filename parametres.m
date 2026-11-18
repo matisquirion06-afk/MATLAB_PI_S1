@@ -121,10 +121,21 @@ P.thetaPrise = pi - asin(P.hauteurPrise / P.L);     % [rad]
 % P.materiaux est un « tableau de structures » : P.materiaux(1) est le
 % premier matériau, P.materiaux(2) le deuxième, etc.
 %
-% rho : masse volumique.
-%   [Fourni] « Rapport bras rotatif.xlsx », feuille DONNÉES (1420, 2700 et
-%   7850 kg/m^3). Statut : PROVISOIRE (aucune source n'est indiquée dans le
-%   tableur : une fiche technique reste à citer pour chaque matériau).
+% rho : masse volumique. Une fiche technique par matériau (18 nov. 2026) :
+%   Delrin    : [Web] DuPont, fiche technique Delrin 900P, « Density
+%               ISO 1183 : 1420 kg/m3 (1.42 g/cm3) ». Delrin est une marque
+%               de DuPont : c'est la source la plus directe.
+%   Aluminium : [Web] ASM Material Data Sheet, aluminium 6061-T6, « Density
+%               2.7 g/cc ». L'alliage exact des rondelles du Cégep n'est pas
+%               identifié : 2700 kg/m^3 est la valeur typique du 6061 (le
+%               6063 donne aussi 2,70 g/cc).
+%   Acier     : [Web] MatWeb, AISI 1020 Steel, cold rolled, « Density
+%               7.87 g/cc ». Nuance demandée par le client : « Acier standard
+%               (1020) » ([Fourni] Infos visite Cégep.docx, 24 juin).
+%               Décision de Matis du 18 nov. 2026 : 7870 au lieu des 7850 du
+%               tableur. À CHANGER AUSSI dans le rapport et dans « Rapport
+%               bras rotatif.xlsx » (feuille DONNÉES, cellule G25).
+%   Statut : CONFIRMÉ (fiches) pour les trois valeurs.
 %
 % mu : coefficient de frottement entre la ventouse et la pièce.
 %   [Web] Schmalz, « Theoretical Holding Force of a Suction Cup » : valeur
@@ -144,7 +155,7 @@ P.materiaux(2).mu      = 0.5;               % [-]
 P.materiaux(2).couleur = [0.78 0.80 0.83];
 
 P.materiaux(3).nom     = 'Acier';
-P.materiaux(3).rho     = 7850;              % [kg/m^3]
+P.materiaux(3).rho     = 7870;              % [kg/m^3] AISI 1020 (MatWeb)
 P.materiaux(3).mu      = 0.5;               % [-]
 P.materiaux(3).couleur = [0.42 0.48 0.56];
 
@@ -168,16 +179,21 @@ P.ventouse.hauteur  = 0.014;    % [m] (sert seulement au dessin)
 % (« Working vacuum pressure -60 kPa », guide de sélection des ventouses
 % ZP/ZPT) et la base du calcul de Schmalz (-0,6 bar). Elle est inférieure
 % au vide maximal d'un éjecteur SMC ZU07S (-85 kPa à 0,45 MPa).
-% Statut : PROVISOIRE. À remplacer par la valeur de la fiche du générateur
-% de vide retenu. Les notes de visite donnent « 10 à 12 psi » (69 à 83 kPa),
-% mais leur auteur n'est pas certain de ce que cette valeur représente.
+% [Fourni] L'éjecteur monté est un SMC ZU07S (Infos visite Cégep.docx,
+% 24 juin) ; [Web] son vide maximal est de -85 kPa à 0,45 MPa, sans fuite
+% (catalogue SMC série ZU). Les notes de visite donnent « 10 à 12 psi »
+% (69 à 83 kPa), valeur que son auteur doit reconfirmer.
+% Statut : JUSTIFIÉ (décision d'équipe du 18 nov. 2026) : 60 kPa, sous ces
+% deux valeurs, pour rester prudent face aux fuites.
 P.vide = 60e3;                  % [Pa]  (60e3 veut dire 60 x 10^3 = 60 000)
 
 % Facteur de sécurité visé pour la prise (valeur affichée à l'ouverture).
 % [Web] Schmalz : au moins 1,5 pour des pièces lisses et étanches ; 2,0 ou
 % plus pour des pièces critiques, poreuses, rugueuses ou huilées.
-% Statut : PROVISOIRE. La consigne demande à l'équipe de fixer ET de
-% justifier cette valeur.
+% Statut : JUSTIFIÉ (décision d'équipe du 18 nov. 2026). C'est une ENTRÉE
+% de l'utilisateur ; 2,0 n'est que la valeur affichée à l'ouverture :
+% rondelle lisse, mais vide supposé constant et frottement non mesuré.
+% Même valeur que le facteur de sécurité du rapport (section 5.2.2).
 P.FScible = 2.0;                % [-]
 
 %% ------------------------------------------------------------------------
@@ -270,8 +286,13 @@ P.actionneur.dureeMin = 1 / (2 * P.actionneur.frequenceMax);   % [s]
 % [Claude] Position du centre de masse : on suppose une barre uniforme de
 % 200 mm dont le pivot est à 11,5 mm d'un bout, donc un centre de masse à
 % 100 - 11,5 = 88,5 mm du pivot.
-% Statut : PROVISOIRE (à remplacer par les « Propriétés de masse » de
-% SolidWorks calculées par rapport à l'axe du pivot).
+% Statut : PROVISOIRE, retenu par l'équipe le 18 nov. 2026 en attendant
+% les « Propriétés de masse » de SolidWorks par rapport à l'axe du pivot.
+% Vérification partielle (Matis, 18 nov. 2026) : l'assemblage MPS-12
+% entier (bras + ensemble ventouse, repère par défaut) donne 0,842 lb =
+% 0,382 kg et Lyy = 5,207 lb.po^2 = 1,524e-3 kg.m^2 au centre de gravité.
+% Le modèle (0,311 + 0,076 kg, barre uniforme) donne 0,387 kg (-1,3 %) et
+% 1,515e-3 kg.m^2 (+0,6 %). Les 0,311 kg ne contiennent donc PAS le vérin.
 P.bras.masse    = 0.311;    % [kg]
 P.bras.longueur = 0.200;    % [m]
 P.bras.distCM   = 0.0885;   % [m] distance pivot -> centre de masse

@@ -126,8 +126,9 @@ if modeDurees == 1
 else
     fprintf(fid, '3. COMPARAISON DES MATÉRIAUX (même durée T = %.3f s pour les trois)\n', res.T);
 end
-fprintf(fid, '   %-12s %10s %10s %10s %16s %10s %12s\n', ...
-        'Matériau', 'Masse (g)', 'Poids (N)', 'T (s)', 'Effort max (N)', 'FS min', 'Cycle (s)');
+fprintf(fid, '   %-12s %10s %10s %10s %16s %10s %12s %12s %14s\n', ...
+        'Matériau', 'Masse (g)', 'Poids (N)', 'T (s)', 'Effort max (N)', 'FS min', 'Cycle (s)', ...
+        'T FS (s)', 'T couple (s)');
 for i = 1:numel(R)
     nom = P.materiaux(i).nom;
     m   = massePiece(P, i);
@@ -135,8 +136,9 @@ for i = 1:numel(R)
         fprintf(fid, '   %-12s %10.2f %10.4f   impossible : couple insuffisant\n', ...
                 nom, m * 1000, m * P.g);
     else
-        fprintf(fid, '   %-12s %10.2f %10.4f %10.3f %16.4f %10.3f %12.3f\n', nom, ...
-                m * 1000, m * P.g, R{i}.T, R{i}.FnormeMax, R{i}.FSmin, R{i}.dureeCycle);
+        fprintf(fid, '   %-12s %10.2f %10.4f %10.3f %16.4f %10.3f %12.3f %12.4f %14.4f\n', nom, ...
+                m * 1000, m * P.g, R{i}.T, R{i}.FnormeMax, R{i}.FSmin, R{i}.dureeCycle, ...
+                infoOpt{i}.Tventouse, infoOpt{i}.Tcouple);
     end
 end
 fprintf(fid, '\n');
@@ -146,6 +148,9 @@ fprintf(fid, '4. DURÉES MINIMALES AU COUPLE DE %.2f N.m ET POUR FS >= %.2f\n', 
         P.actionneur.couple, FScible);
 fprintf(fid, '   La durée d''une rotation est un RÉSULTAT : la plus courte qui respecte à la\n');
 fprintf(fid, '   fois le couple de l''actionneur, la ventouse et la fréquence maximale.\n');
+fprintf(fid, '   Point d) de la consigne : la durée minimale compatible avec le FS cible est\n');
+fprintf(fid, '   la durée « ventouse » ci-dessous (T FS). La durée retenue est la plus longue\n');
+fprintf(fid, '   des trois limites.\n');
 for i = 1:numel(R)
     info = infoOpt{i};
     nom  = P.materiaux(i).nom;
