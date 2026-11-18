@@ -279,10 +279,20 @@ tab = ajouter(tab, 'C4', ['Cohérence - un couple plus grand raccourcit la rotat
 % =====================================================================================
 %  AFFICHAGE DE LA MATRICE DE TESTS
 % =====================================================================================
+% Ordre des colonnes imposé par la consigne (section 5.5, p. 7) :
+%   ID | Cas testé | Entrées | Résultat attendu | Résultat obtenu | Verdict
+% [Claude] Avant le 18 nov. 2026, « Verdict » était imprimé AVANT
+% « Résultat obtenu ». Corrigé pour suivre la consigne.
+%
+% Le « Résultat obtenu » a une longueur variable. Pour que la colonne
+% « Verdict » reste alignée, on donne à cette colonne la largeur du plus
+% long résultat : cellfun(@length, ...) mesure la longueur de chaque texte.
+largeurObtenu = max([numel('Résultat obtenu'), cellfun(@length, tab(:, 5))']);
+gabarit = ['%-4s| %-58s| %-40s| %-48s| %-' num2str(largeurObtenu) 's| %s\n'];
+
 fprintf('\nMATRICE DE TESTS DU PROGRAMME RED\n\n');
-fprintf('%-4s| %-58s| %-40s| %-48s| %-9s| %s\n', ...
-        'ID', 'Cas testé', 'Entrées', 'Résultat attendu', 'Verdict', 'Résultat obtenu');
-fprintf('%s\n', repmat('-', 1, 230));
+fprintf(gabarit, 'ID', 'Cas testé', 'Entrées', 'Résultat attendu', 'Résultat obtenu', 'Verdict');
+fprintf('%s\n', repmat('-', 1, 160 + largeurObtenu));
 
 nEchecs = 0;
 for k = 1:size(tab, 1)
@@ -292,8 +302,7 @@ for k = 1:size(tab, 1)
         verdict = 'ÉCHEC';
         nEchecs = nEchecs + 1;
     end
-    fprintf('%-4s| %-58s| %-40s| %-48s| %-9s| %s\n', ...
-            tab{k, 1}, tab{k, 2}, tab{k, 3}, tab{k, 4}, verdict, tab{k, 5});
+    fprintf(gabarit, tab{k, 1}, tab{k, 2}, tab{k, 3}, tab{k, 4}, tab{k, 5}, verdict);
 end
 
 fprintf('\nBilan : %d test(s) sur %d conforme(s).\n\n', size(tab, 1) - nEchecs, size(tab, 1));
