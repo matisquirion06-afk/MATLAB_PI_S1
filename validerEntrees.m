@@ -1,12 +1,16 @@
-function [valide, message] = validerEntrees(P, couple, FScible)
+function [valide, message] = validerEntrees(P, couple, FScible, T)
 % VALIDERENTREES  Vérifie les valeurs tapées par l'utilisateur AVANT tout calcul.
 %
 %   [valide, message] = validerEntrees(P, couple, FScible)
+%   [valide, message] = validerEntrees(P, couple, FScible, T)
 %
 %   ENTRÉES
 %     P         structure des paramètres (voir parametres.m)
 %     couple    couple de l'actionneur demandé [N.m]
 %     FScible   facteur de sécurité cible demandé [-]
+%     T         FACULTATIF : durée du transfert imposée par l'utilisateur [s].
+%               Seulement en mode « durée imposée » ; absente ou vide, elle
+%               n'est pas vérifiée.
 %
 %   SORTIES
 %     valide    true si les deux valeurs sont acceptables, false sinon
@@ -20,12 +24,14 @@ function [valide, message] = validerEntrees(P, couple, FScible)
 %     Si cette fonction retourne valide = false, l'interface n'effectue
 %     AUCUN calcul et affiche le message en rouge.
 %
-%   POURQUOI LE COUPLE ET NON LA DURÉE
-%     [Claude] Depuis le 18 nov. 2026, la durée du transfert n'est plus
-%     tapée par l'utilisateur : c'est un RÉSULTAT, calculé à partir du
-%     couple de l'actionneur. L'exemple de la consigne (« durée nulle ou
-%     négative ») devient donc « couple nul ou négatif » : c'est la même
-%     vérification, appliquée à la nouvelle entrée.
+%   LE COUPLE ET LA DURÉE
+%     [Claude] Depuis le 18 nov. 2026, l'entrée principale est le couple :
+%     par défaut, la durée du transfert est un RÉSULTAT calculé à partir
+%     de lui. L'utilisateur peut quand même imposer une durée (mode
+%     « durée imposée »), par exemple pour étudier un montage ralenti par
+%     ses limiteurs de débit. Les deux sont donc vérifiés ici, et
+%     l'exemple de la consigne (« durée nulle ou négative ») s'applique
+%     tel quel.
 %
 %   CE QUE CETTE FONCTION NE VÉRIFIE PAS
 %     Un couple positif peut quand même être trop faible pour soulever la
@@ -77,7 +83,29 @@ if FScible > P.saisie.FSmax
     return;
 end
 
-% --- 3. Tout est correct -----------------------------------------------------
+% --- 3. La durée du transfert imposée (seulement si elle est fournie) -------
+if nargin >= 4 && ~isempty(T)
+    if ~isnumeric(T) || ~isscalar(T) || isnan(T)
+        message = 'Durée du transfert invalide : entrer un nombre (exemple : 0.9).';
+        return;
+    end
+    if isinf(T)
+        message = 'Durée du transfert invalide : la valeur doit être finie.';
+        return;
+    end
+    if T <= 0
+        message = sprintf(['Durée du transfert invalide (%g s) : elle doit être ' ...
+                           'plus grande que zéro.'], T);
+        return;
+    end
+    if T > P.saisie.Tmax
+        message = sprintf(['Durée du transfert hors limites (%g s) : la valeur ' ...
+                           'maximale acceptée est %g s.'], T, P.saisie.Tmax);
+        return;
+    end
+end
+
+% --- 4. Tout est correct -----------------------------------------------------
 valide = true;
 
 end

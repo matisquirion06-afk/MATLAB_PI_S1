@@ -27,7 +27,9 @@ function RED_IUG()
 %     - l'origine des durées des rotations :
 %         « calculée à ce couple »  : la plus courte possible (par défaut) ;
 %         « mesurée sur la vidéo »  : le montage réel, ralenti par ses
-%                                     limiteurs de débit.
+%                                     limiteurs de débit ;
+%         « imposée »               : l'utilisateur tape la durée du
+%                                     transfert (case dédiée).
 %     [Claude] Avant le 18 nov. 2026, la durée du transfert se tapait dans
 %     une case et un bouton « Optimiser » calculait la durée minimale. On a
 %     inversé la relation : le couple est la variable indépendante, la
@@ -153,41 +155,52 @@ h.editFS = uicontrol('Parent', pan, 'Style', 'edit', ...
 % 1. Calculée : la plus courte que permettent le couple et la ventouse.
 % 2. Vidéo    : les durées mesurées sur le montage réel, qui est ralenti
 %               par ses limiteurs de débit. Sert à comparer au montage.
+% 3. Imposée  : l'utilisateur tape la durée du transfert dans la case
+%               ci-dessous (le retour à vide garde sa durée mesurée).
 etiquette(pan, [0.05 0.789 0.90 0.026], 'Durée des rotations', false);
 h.popMode = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
     'Units', 'normalized', 'Position', [0.05 0.751 0.90 0.038], ...
     'String', {'Calculée à ce couple (vitesse maximale)', ...
                sprintf('Mesurée sur la vidéo (%.3f s et %.3f s)', ...
-                       P.duree.transfert, P.duree.retour)}, ...
+                       P.duree.transfert, P.duree.retour), ...
+               'Imposée par l''utilisateur (case ci-dessous)'}, ...
     'Value', S.modeDurees, ...
     'Callback', @(~, ~) mettreAJour(fig));
 
-bouton(pan, [0.05 0.704 0.90 0.038], ...
+% --- Durée du transfert imposée (active seulement en mode 3) ---
+etiquette(pan, [0.05 0.710 0.63 0.028], 'Durée du transfert imposée (s)', false);
+h.editT = uicontrol('Parent', pan, 'Style', 'edit', ...
+    'Units', 'normalized', 'Position', [0.69 0.708 0.26 0.038], ...
+    'String', sprintf('%.3f', P.duree.transfert), 'BackgroundColor', [1 1 1], ...
+    'Enable', 'off', ...
+    'Callback', @(~, ~) mettreAJour(fig));
+
+bouton(pan, [0.05 0.662 0.90 0.038], ...
        sprintf('Couple du catalogue Festo (%.2f N.m)', P.actionneur.coupleCatalogue), ...
        @(~, ~) retablirCouple(fig));
 
 % --- Animation ---
-etiquette(pan, [0.05 0.662 0.90 0.028], 'ANIMATION DU CYCLE', true);
-bouton(pan, [0.050 0.618 0.29 0.040], 'Lancer',  @(~, ~) lancerAnimation(fig));
-bouton(pan, [0.355 0.618 0.29 0.040], 'Pause',   @(~, ~) mettreEnPause(fig));
-bouton(pan, [0.660 0.618 0.29 0.040], 'Arrêter', @(~, ~) arreterAnimation(fig));
+etiquette(pan, [0.05 0.620 0.90 0.028], 'ANIMATION DU CYCLE', true);
+bouton(pan, [0.050 0.576 0.29 0.040], 'Lancer',  @(~, ~) lancerAnimation(fig));
+bouton(pan, [0.355 0.576 0.29 0.040], 'Pause',   @(~, ~) mettreEnPause(fig));
+bouton(pan, [0.660 0.576 0.29 0.040], 'Arrêter', @(~, ~) arreterAnimation(fig));
 
-etiquette(pan, [0.05 0.574 0.56 0.028], 'Vitesse de l''animation', false);
+etiquette(pan, [0.05 0.532 0.56 0.028], 'Vitesse de l''animation', false);
 h.popVitesse = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
-    'Units', 'normalized', 'Position', [0.62 0.572 0.33 0.038], ...
+    'Units', 'normalized', 'Position', [0.62 0.530 0.33 0.038], ...
     'String', {'0,1 x', '0,25 x', '0,5 x', '1 x', '2 x'}, 'Value', 4, ...
     'Callback', @(~, ~) changerVitesse(fig));
 
 % Glissière : permet de se déplacer à la main dans le cycle
-etiquette(pan, [0.05 0.538 0.90 0.026], 'Position dans le cycle (glissière)', false);
+etiquette(pan, [0.05 0.496 0.90 0.026], 'Position dans le cycle (glissière)', false);
 h.glissiere = uicontrol('Parent', pan, 'Style', 'slider', ...
-    'Units', 'normalized', 'Position', [0.05 0.508 0.90 0.028], ...
+    'Units', 'normalized', 'Position', [0.05 0.466 0.90 0.028], ...
     'Min', 0, 'Max', 1, 'Value', 0, 'SliderStep', [0.005 0.05], ...
     'Callback', @(~, ~) deplacerGlissiere(fig));
 
 % Case à cocher : agrandir les tracés sur l'étape du transfert
 h.caseZoom = uicontrol('Parent', pan, 'Style', 'checkbox', ...
-    'Units', 'normalized', 'Position', [0.05 0.466 0.90 0.034], ...
+    'Units', 'normalized', 'Position', [0.05 0.424 0.90 0.034], ...
     'String', 'Tracés : zoom sur le transfert', 'Value', 0, ...
     'BackgroundColor', fond, ...
     'Callback', @(~, ~) changerZoom(fig));
@@ -196,9 +209,9 @@ h.caseZoom = uicontrol('Parent', pan, 'Style', 'checkbox', ...
 % [Claude] La zone est plus haute qu'avant le 18 nov. 2026 : les boutons
 % « Optimiser » et « Appliquer » ont disparu (le calcul de la durée est
 % maintenant permanent) et le couple instantané a été ajouté.
-etiquette(pan, [0.05 0.428 0.90 0.028], 'VALEURS À L''INSTANT AFFICHÉ', true);
+etiquette(pan, [0.05 0.386 0.90 0.028], 'VALEURS À L''INSTANT AFFICHÉ', true);
 h.txtInstant = uicontrol('Parent', pan, 'Style', 'text', ...
-    'Units', 'normalized', 'Position', [0.05 0.196 0.90 0.228], ...
+    'Units', 'normalized', 'Position', [0.05 0.196 0.90 0.186], ...
     'String', '', 'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1]);
 
 % --- Résultats et vérification ---
@@ -386,12 +399,21 @@ nMat = numel(S.P.materiaux);
 
 % --- 1. Lire les choix de l'utilisateur ------------------------------------------
 S.iMat       = get(S.h.popMateriau, 'Value');   % numéro de la ligne choisie
-S.modeDurees = get(S.h.popMode, 'Value');       % 1 = calculée, 2 = vidéo
+S.modeDurees = get(S.h.popMode, 'Value');       % 1 calculée, 2 vidéo, 3 imposée
 couple       = lireNombre(S.h.editCouple);
 FScible      = lireNombre(S.h.editFS);
 
+% La case de durée n'est active (et lue) qu'en mode « imposée ».
+if S.modeDurees == 3
+    set(S.h.editT, 'Enable', 'on');
+    Timpose = lireNombre(S.h.editT);
+else
+    set(S.h.editT, 'Enable', 'off');
+    Timpose = [];                       % [] = pas de durée à vérifier
+end
+
 % --- 2. Valider les entrées AVANT de calculer --------------------------------------
-[valide, message] = validerEntrees(S.P, couple, FScible);
+[valide, message] = validerEntrees(S.P, couple, FScible, Timpose);
 
 if ~valide
     % Entrée invalide : on n'affiche AUCUN résultat (exigence de la consigne).
@@ -425,12 +447,19 @@ end
 % rester du côté sûr : une durée un peu plus longue donne un FS un peu
 % plus grand que la cible, jamais plus petit, et un couple requis un peu
 % plus petit que celui de l'actionneur, jamais plus grand.
-if S.modeDurees == 1
-    Ttransfert = ceil(S.Tmin * 1000) / 1000;          % un par matériau
-    Tretour    = ceil(S.TretourMin * 1000) / 1000;
-else
-    Ttransfert = S.P.duree.transfert * ones(1, nMat); % mesures de la vidéo
-    Tretour    = S.P.duree.retour;
+% En mode « imposée », la durée tapée peut être plus courte que la durée
+% minimale : le calcul se fait quand même, et verifierDomaine signale
+% alors que le couple ou le FS cible est dépassé (domaine de validité).
+switch S.modeDurees
+    case 1      % calculée à partir du couple
+        Ttransfert = ceil(S.Tmin * 1000) / 1000;          % un par matériau
+        Tretour    = ceil(S.TretourMin * 1000) / 1000;
+    case 2      % mesures de la vidéo
+        Ttransfert = S.P.duree.transfert * ones(1, nMat);
+        Tretour    = S.P.duree.retour;
+    otherwise   % imposée par l'utilisateur ; le retour garde sa durée mesurée
+        Ttransfert = Timpose * ones(1, nMat);
+        Tretour    = S.P.duree.retour;
 end
 
 % --- 5. Calculer le cycle pour les trois matériaux ---------------------------------------
@@ -677,8 +706,12 @@ if S.modeDurees == 1
     lignes{end+1} = sprintf('   (vidéo : %.2f s, soit %.2f pièces/min)', cVid, 60 / cVid);
 
 else
-    % ---------- Durées MESURÉES sur la vidéo ----------
-    lignes = {sprintf('DURÉES DES ROTATIONS - %s, mesurées sur la vidéo', res.nomMateriau)};
+    % ---------- Durées MESURÉES (vidéo) ou IMPOSÉES (utilisateur) ----------
+    if S.modeDurees == 2
+        lignes = {sprintf('DURÉES DES ROTATIONS - %s, mesurées sur la vidéo', res.nomMateriau)};
+    else
+        lignes = {sprintf('DURÉES DES ROTATIONS - %s, transfert imposé', res.nomMateriau)};
+    end
 
     lignes{end+1} = sprintf('Transfert (étape 4) : %.3f s', res.T);
     if isnan(S.Tmin(i))
@@ -698,7 +731,13 @@ else
 
     lignes{end+1} = sprintf('Cycle : %.2f s, soit %.2f pièces/min', ...
                             res.dureeCycle, res.cadence);
-    lignes{end+1} = 'Le montage réel est ralenti par ses limiteurs de débit.';
+    if S.modeDurees == 2
+        lignes{end+1} = 'Le montage réel est ralenti par ses limiteurs de débit.';
+    elseif ~isnan(S.Tmin(i)) && res.T < S.Tmin(i)
+        lignes{end+1} = 'ATTENTION : transfert imposé plus court que le minimum.';
+    else
+        lignes{end+1} = 'Retour à vide : durée mesurée sur la vidéo.';
+    end
 end
 
 set(S.h.txtOptim, 'String', lignes);
