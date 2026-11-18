@@ -154,15 +154,71 @@ else
     coupleVise    = P.actionneur.couple;                    % [N.m]
 end
 
+% --- B8. La même durée minimale, par une FORMULE DIRECTE sans itération ----------------------
+% [Claude] Vérification ajoutée le 18 nov. 2026.
+%
+%   dureeCouple.m trouve la durée par dichotomie : il essaie des valeurs
+%   jusqu'à tomber sur la bonne. La même durée s'obtient d'un seul coup,
+%   sans aucun essai, et c'est ce que l'on fait ici.
+%
+%   L'accélération angulaire de la loi cubique vaut Dtheta*s''/T^2, et
+%   |s''| ne dépasse jamais 6. L'accélération maximale est donc
+%
+%       alpha_max = 6*Dtheta / T^2
+%
+%   Elle est atteinte aux deux extrémités du mouvement, c'est-à-dire là où
+%   le bras est le plus proche de l'horizontale et où le couple de gravité
+%   est lui aussi le plus grand : les deux termes s'additionnent. En
+%   écrivant que leur somme égale la capacité de l'actionneur,
+%
+%       J * 6*Dtheta/T^2  +  M_gravite  =  C_max
+%
+%   puis en isolant T :
+%
+%       T = racine( 6*J*Dtheta / (C_max - M_gravite) )
+%
+%   Aucune itération, aucun appel à momentPivot.m ni à DeplacementAngulaire.m :
+%   c'est un chemin entièrement distinct de celui du programme.
+%
+%   Cette formule n'a pas remplacé la dichotomie dans le programme, parce
+%   que la dichotomie traite aussi le critère de la ventouse, qui n'a pas
+%   de forme aussi simple. Elle sert ici de contrôle.
+
+if isnan(Tcouple)
+    Tcouple_ind = NaN;
+else
+    masseBout = P.masseVentouse + masse;                    % [kg]
+    Jdirect = P.bras.masse * (P.bras.longueur^2 / 12 + P.bras.distCM^2) ...
+            + masseBout * P.L^2;                            % [kg.m^2]
+
+    % Couple de gravité à l'angle d'arrivée (le plus défavorable des deux
+    % extrémités : c'est celle dont |cos(theta)| est le plus grand).
+    MgravDepot = P.g * abs(cos(thetaDepot)) ...
+               * (P.bras.masse * P.bras.distCM + masseBout * P.L);     % [N.m]
+    MgravPrise = P.g * abs(cos(thetaPrise)) ...
+               * (P.bras.masse * P.bras.distCM + masseBout * P.L);     % [N.m]
+    MgravMax = max(MgravDepot, MgravPrise);                 % [N.m]
+
+    coupleDisponible = P.actionneur.couple - MgravMax;      % [N.m]
+
+    if coupleDisponible <= 0
+        Tcouple_ind = NaN;      % la gravité consomme déjà tout le couple
+    else
+        Tcouple_ind = sqrt(6 * Jdirect * abs(thetaDepot - thetaPrise) ...
+                           / coupleDisponible);             % [s]
+    end
+end
+
 % =====================================================================================
 %  C. COMPARAISON
 % =====================================================================================
 V.noms        = {'Effort total maximal (N)', 'FS minimal (-)', ...
                  'Durée min. imposée par la ventouse (s)', ...
                  'Effort bras immobile = poids (N)', ...
-                 'Couple max à la durée min. couple (N.m)'};
-V.programme   = [res.FnormeMax, res.FSmin, Tventouse, E0.Fnorme, coupleVise];
-V.independant = [effortMax_ind, FSmin_ind, Tmin_ind,  poids_ind, coupleMax_ind];
+                 'Couple max à la durée min. couple (N.m)', ...
+                 'Durée min. imposée par le couple (s)'};
+V.programme   = [res.FnormeMax, res.FSmin, Tventouse, E0.Fnorme, coupleVise,    Tcouple];
+V.independant = [effortMax_ind, FSmin_ind, Tmin_ind,  poids_ind, coupleMax_ind, Tcouple_ind];
 V.ecart       = 100 * abs(V.programme - V.independant) ./ abs(V.independant);    % [%]
 
 % Une comparaison avec NaN (pas de solution) n'est pas un échec si les DEUX

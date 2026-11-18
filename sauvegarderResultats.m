@@ -151,6 +151,7 @@ fprintf(fid, '   Facteur de sécurité   : FS = F_vide / F_requis               
 fprintf(fid, '   Durée minimale        : T_min = max(T_ventouse, T_couple, T_frequence)      -> dureeMinimale.m\n');
 fprintf(fid, '     dont ventouse       : FS_min(T) = FS_cible, résolue par dichotomie        -> dureeMinimale.m\n');
 fprintf(fid, '     dont couple         : max|M(T)| = M_actionneur, résolue par dichotomie    -> dureeCouple.m\n');
+fprintf(fid, '       contre-verification : T = racine(6*J*Dtheta / (M_actionneur - M_gravite)) -> verifIndependante.m\n');
 fprintf(fid, '   Couple au pivot       : M = J*alpha + g*cos(theta)*(somme des m*d)          -> momentPivot.m\n\n');
 
 % --- 8. Valeurs calculées pendant le transfert ---------------------------------------------------------------------------------
