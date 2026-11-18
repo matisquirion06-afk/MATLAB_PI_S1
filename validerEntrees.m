@@ -1,11 +1,11 @@
-function [valide, message] = validerEntrees(P, T, FScible)
+function [valide, message] = validerEntrees(P, couple, FScible)
 % VALIDERENTREES  Vérifie les valeurs tapées par l'utilisateur AVANT tout calcul.
 %
-%   [valide, message] = validerEntrees(P, T, FScible)
+%   [valide, message] = validerEntrees(P, couple, FScible)
 %
 %   ENTRÉES
 %     P         structure des paramètres (voir parametres.m)
-%     T         durée du transfert demandée [s]
+%     couple    couple de l'actionneur demandé [N.m]
 %     FScible   facteur de sécurité cible demandé [-]
 %
 %   SORTIES
@@ -20,6 +20,18 @@ function [valide, message] = validerEntrees(P, T, FScible)
 %     Si cette fonction retourne valide = false, l'interface n'effectue
 %     AUCUN calcul et affiche le message en rouge.
 %
+%   POURQUOI LE COUPLE ET NON LA DURÉE
+%     [Claude] Depuis le 18 nov. 2026, la durée du transfert n'est plus
+%     tapée par l'utilisateur : c'est un RÉSULTAT, calculé à partir du
+%     couple de l'actionneur. L'exemple de la consigne (« durée nulle ou
+%     négative ») devient donc « couple nul ou négatif » : c'est la même
+%     vérification, appliquée à la nouvelle entrée.
+%
+%   CE QUE CETTE FONCTION NE VÉRIFIE PAS
+%     Un couple positif peut quand même être trop faible pour soulever la
+%     pièce. Ce n'est pas une ERREUR DE SAISIE mais un RÉSULTAT physique :
+%     il dépend du matériau, et c'est dureeCouple.m qui le détecte.
+%
 %   REMARQUE : quand l'utilisateur tape du texte qui n'est pas un nombre
 %   (par exemple « abc »), la conversion en nombre donne NaN (« Not a
 %   Number »). On détecte ce cas avec la fonction isnan.
@@ -27,23 +39,23 @@ function [valide, message] = validerEntrees(P, T, FScible)
 valide  = false;        % on suppose une erreur tant que tout n'est pas vérifié
 message = '';
 
-% --- 1. La durée du transfert T ---------------------------------------------
-if ~isnumeric(T) || ~isscalar(T) || isnan(T)
-    message = 'Durée du transfert invalide : entrer un nombre (exemple : 0.9).';
+% --- 1. Le couple de l'actionneur ----------------------------------------------
+if ~isnumeric(couple) || ~isscalar(couple) || isnan(couple)
+    message = 'Couple de l''actionneur invalide : entrer un nombre (exemple : 2).';
     return;
 end
-if isinf(T)
-    message = 'Durée du transfert invalide : la valeur doit être finie.';
+if isinf(couple)
+    message = 'Couple de l''actionneur invalide : la valeur doit être finie.';
     return;
 end
-if T <= 0
-    message = sprintf(['Durée du transfert invalide (%g s) : elle doit être ' ...
-                       'plus grande que zéro.'], T);
+if couple <= 0
+    message = sprintf(['Couple de l''actionneur invalide (%g N.m) : il doit être ' ...
+                       'plus grand que zéro.'], couple);
     return;
 end
-if T > P.saisie.Tmax
-    message = sprintf(['Durée du transfert hors limites (%g s) : la valeur ' ...
-                       'maximale acceptée est %g s.'], T, P.saisie.Tmax);
+if couple > P.saisie.coupleMax
+    message = sprintf(['Couple de l''actionneur hors limites (%g N.m) : la valeur ' ...
+                       'maximale acceptée est %g N.m.'], couple, P.saisie.coupleMax);
     return;
 end
 

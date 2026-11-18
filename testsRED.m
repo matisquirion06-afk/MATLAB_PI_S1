@@ -17,10 +17,16 @@ function nEchecs = testsRED()
 %
 %   LES FAMILLES DE TESTS
 %     N  cas nominaux        un par matériau, avec les valeurs de la vidéo
-%     L  cas limites         durée minimale, bras immobile, mouvement très lent
-%     I  entrées invalides   durée nulle ou négative, texte, FS inférieur à 1
+%     L  cas limites         durée minimale, bras immobile, mouvement très lent,
+%                            couple insuffisant
+%     I  entrées invalides   couple nul ou négatif, texte, FS inférieur à 1
 %     C  cohérence physique  comportements attendus par la consigne
 %     V  vérifications       lois de mouvement et calcul indépendant
+%
+%   [Claude] Depuis le 18 nov. 2026, l'entrée de l'interface est le couple de
+%   l'actionneur et non plus la durée du transfert. Les tests I1 à I3
+%   portent donc sur le couple. Les tests L6 et C4 vérifient le nouveau
+%   lien entre le couple et la durée.
 %
 %   COMMENT UN TEST EST ÉCRIT
 %     Chaque test calcule une valeur « obtenue », la compare à ce qui est
@@ -145,27 +151,47 @@ end
 tab = ajouter(tab, 'L4', 'Limite - géométrie impossible', ...
     'Hauteur d''appui à la prise = 1 m', 'Erreur signalée, aucun calcul', obtenu, reussi);
 
+% L6 : couple trop faible pour soulever la pièce.
+%      [Claude] Test ajouté le 18 nov. 2026, quand le couple est devenu
+%      l'entrée de l'interface. Un couple positif (donc une saisie valide)
+%      peut quand même être plus petit que le couple de gravité de la
+%      pièce au pivot. Aucune durée ne convient alors : le programme doit
+%      le dire, et non retourner une durée.
+Pfaible = P;
+Pfaible.actionneur.couple = 0.5;        % [N.m] sous le couple de gravité de l'acier
+[Tfaible, infoFaible] = dureeMinimale(Pfaible, iDense, FS);
+reussi = isnan(Tfaible) && strcmp(infoFaible.statut, 'impossible');
+if reussi
+    obtenu = ['Impossible : ' infoFaible.message];
+else
+    obtenu = sprintf('Durée retournée : %.4f s', Tfaible);
+end
+tab = ajouter(tab, 'L6', ['Limite - couple insuffisant pour soulever la pièce (' nomDense ')'], ...
+    sprintf('couple = %.2f N.m ; FS cible = %.2f', Pfaible.actionneur.couple, FS), ...
+    'Aucune durée possible, statut « impossible »', obtenu, reussi);
+
 % =====================================================================================
 %  I - ENTRÉES INVALIDES : elles doivent toutes être refusées
 % =====================================================================================
+Mcat = P.actionneur.coupleCatalogue;   % couple valide de référence
 casInvalides = { ...
-    'I1', 'Durée de transfert nulle',            0,    FS ; ...
-    'I2', 'Durée de transfert négative',         -0.5, FS ; ...
-    'I3', 'Durée non numérique (texte « abc »)', NaN,  FS ; ...
-    'I4', 'Facteur de sécurité inférieur à 1',   T,    0.5 ; ...
-    'I5', 'Facteur de sécurité non numérique',   T,    NaN };
+    'I1', 'Couple de l''actionneur nul',           0,    FS ; ...
+    'I2', 'Couple de l''actionneur négatif',       -1,   FS ; ...
+    'I3', 'Couple non numérique (texte « abc »)', NaN,  FS ; ...
+    'I4', 'Facteur de sécurité inférieur à 1',    Mcat, 0.5 ; ...
+    'I5', 'Facteur de sécurité non numérique',    Mcat, NaN };
 
 for k = 1:size(casInvalides, 1)
-    Tk  = casInvalides{k, 3};
+    Mk  = casInvalides{k, 3};
     FSk = casInvalides{k, 4};
-    [valide, message] = validerEntrees(P, Tk, FSk);
+    [valide, message] = validerEntrees(P, Mk, FSk);
     if valide
         obtenu = 'Entrée acceptée';
     else
         obtenu = ['Refusée : ' message];
     end
     tab = ajouter(tab, casInvalides{k, 1}, ['Invalide - ' casInvalides{k, 2}], ...
-        sprintf('T = %g s ; FS cible = %g', Tk, FSk), ...
+        sprintf('couple = %g N.m ; FS cible = %g', Mk, FSk), ...
         'Entrée refusée avec un message', obtenu, ~valide);
 end
 
@@ -210,6 +236,22 @@ tab = ajouter(tab, 'C3', 'Cohérence - durée minimale la plus longue pour le pl
     sprintf('FS cible = %.2f ; les %d matériaux', FS, nMat), ...
     'T min croissant du plus léger au plus lourd', ...
     sprintf('%.4f s < %.4f s < %.4f s', dureesMin(ordre)), reussi);
+
+% C4 : un couple plus grand donne une durée plus courte.
+%      [Claude] Test ajouté le 18 nov. 2026. C'est le comportement de base
+%      de la nouvelle architecture : le couple est la cause, la durée
+%      l'effet. On compare deux couples pour lesquels c'est le couple, et
+%      non la ventouse, qui limite le transfert de l'acier.
+Pmoins = P;  Pmoins.actionneur.couple = 1.5;    % [N.m]
+Pplus  = P;  Pplus.actionneur.couple  = 2.0;    % [N.m]
+[Tmoins, ~] = dureeMinimale(Pmoins, iDense, FS);
+[Tplus,  ~] = dureeMinimale(Pplus,  iDense, FS);
+reussi = (Tplus < Tmoins);
+tab = ajouter(tab, 'C4', ['Cohérence - un couple plus grand raccourcit la rotation (' nomDense ')'], ...
+    sprintf('couple = %.1f N.m, puis %.1f N.m', Pmoins.actionneur.couple, Pplus.actionneur.couple), ...
+    'T min plus court avec le plus grand couple', ...
+    sprintf('%.4f s (%.1f N.m) > %.4f s (%.1f N.m)', Tmoins, Pmoins.actionneur.couple, ...
+            Tplus, Pplus.actionneur.couple), reussi);
 
 
 % =====================================================================================

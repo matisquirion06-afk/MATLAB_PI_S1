@@ -25,7 +25,14 @@ function [niveau, lignes] = verifierDomaine(P, res, FScible)
 %     1. Prise : comparer FSmin à 1, puis à FScible.
 %     2. Actionneur (si P.actionneur.verifier est vrai) :
 %        a) durée T plus courte que ce que l'actionneur peut réaliser ;
-%        b) couple requis au pivot plus grand que le couple de l'actionneur.
+%        b) couple requis au pivot plus grand que le couple de l'actionneur ;
+%        c) couple choisi plus grand que celui du catalogue : le calcul
+%           suppose alors un actionneur plus gros que le DSR-16 monté.
+%
+%   [Claude] Depuis que le couple est l'entrée de l'interface (18 nov. 2026),
+%   les vérifications a) et b) ne devraient plus se déclencher en mode
+%   « durée calculée » : la durée est justement choisie pour les respecter.
+%   Elles restent en place comme garde-fou.
 
 lignes = {};            % liste vide au départ ; on y ajoute des phrases
 niveau = 'ok';
@@ -65,6 +72,18 @@ if P.actionneur.verifier
         lignes{end+1} = sprintf(['Hors domaine : couple requis au pivot (%.2f N.m) ' ...
             'supérieur à celui de l''actionneur (%.2f N.m).'], ...
             res.coupleMax, P.actionneur.couple);
+    end
+
+    % c) Couple choisi au-delà du catalogue du DSR-16
+    % La petite marge (1e-9) évite qu'un arrondi déclenche le message
+    % quand le couple tapé vaut exactement la valeur du catalogue.
+    if P.actionneur.couple > P.actionneur.coupleCatalogue + 1e-9
+        if strcmp(niveau, 'ok')
+            niveau = 'avertissement';
+        end
+        lignes{end+1} = sprintf(['Hors domaine : couple de %.2f N.m supérieur au ' ...
+            'catalogue du DSR-16 (%.2f N.m à 6 bar). Le calcul suppose un ' ...
+            'actionneur plus gros.'], P.actionneur.couple, P.actionneur.coupleCatalogue);
     end
 end
 

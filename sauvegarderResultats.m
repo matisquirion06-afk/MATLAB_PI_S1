@@ -1,16 +1,23 @@
-function reussi = sauvegarderResultats(chemin, P, R, iMat, FScible, Tmin, infoOpt)
+function reussi = sauvegarderResultats(chemin, P, R, iMat, FScible, Tmin, infoOpt, ...
+                                       modeDurees, TretourMin)
 % SAUVEGARDERRESULTATS  Écrit les résultats dans un fichier texte.
 %
 %   reussi = sauvegarderResultats(chemin, P, R, iMat, FScible, Tmin, infoOpt)
+%   reussi = sauvegarderResultats(..., modeDurees, TretourMin)
 %
 %   ENTRÉES
-%     chemin    nom complet du fichier à créer (exemple : 'C:\...\resultats.txt')
-%     P         structure des paramètres (voir parametres.m)
-%     R         résultats des trois matériaux : R{i} = sortie de calculerCycle.m
-%     iMat      numéro du matériau choisi dans l'interface
-%     FScible   facteur de sécurité cible [-]
-%     Tmin      durées minimales [s] des trois matériaux (NaN si pas calculées)
-%     infoOpt   informations sur l'optimisation (sorties de dureeMinimale.m)
+%     chemin      nom complet du fichier à créer (exemple : 'C:\...\resultats.txt')
+%     P           structure des paramètres (voir parametres.m) ; le couple
+%                 de l'actionneur utilisé est P.actionneur.couple
+%     R           résultats des trois matériaux : R{i} = sortie de calculerCycle.m
+%                 ([] si le couple ne suffit pas pour ce matériau)
+%     iMat        numéro du matériau choisi dans l'interface
+%     FScible     facteur de sécurité cible [-]
+%     Tmin        durées minimales du transfert [s], une par matériau (NaN si impossible)
+%     infoOpt     informations sur ces durées (sorties de dureeMinimale.m)
+%     modeDurees  FACULTATIF : 1 = durées calculées au couple (par défaut),
+%                              2 = durées mesurées sur la vidéo
+%     TretourMin  FACULTATIF : durée minimale du retour à vide [s]
 %
 %   SORTIE
 %     reussi    true si le fichier a été écrit, false sinon
@@ -34,6 +41,14 @@ reussi = false;
 res    = R{iMat};                       % résultats du matériau choisi
 deg    = 180 / pi;                      % conversion rad -> degrés
 
+% Arguments facultatifs (nargin = nombre d'arguments reçus)
+if nargin < 8 || isempty(modeDurees)
+    modeDurees = 1;
+end
+if nargin < 9
+    TretourMin = NaN;
+end
+
 % --- Ouvrir le fichier (encodage UTF-8 pour conserver les accents) -------------------
 fid = fopen(chemin, 'w', 'n', 'UTF-8');
 if fid == -1
@@ -52,11 +67,27 @@ fprintf(fid, 'ATTENTION : version préliminaire. Les valeurs marquées « Provis
 fprintf(fid, 'tableau des hypothèses (section 6) restent à confirmer.\n\n');
 
 % --- 1. Entrées --------------------------------------------------------------------------
+if abs(P.actionneur.couple - P.actionneur.coupleCatalogue) < 1e-9
+    origineCouple = 'catalogue Festo, DSR-16 à 6 bar';
+else
+    origineCouple = sprintf('MODIFIÉ (catalogue : %.2f N.m)', P.actionneur.coupleCatalogue);
+end
+if modeDurees == 1
+    origineDurees = 'calculées à ce couple (vitesse maximale)';
+else
+    origineDurees = 'mesurées sur la vidéo';
+end
+
 fprintf(fid, '1. ENTRÉES CHOISIES DANS L''INTERFACE\n');
-fprintf(fid, '   Matériau de la pièce      : %s\n', res.nomMateriau);
-fprintf(fid, '   Loi de mouvement          : polynomiale cubique (degre 3)\n');
-fprintf(fid, '   Durée du transfert T      : %.3f s\n', res.T);
-fprintf(fid, '   Facteur de sécurité cible : %.2f\n\n', FScible);
+fprintf(fid, '   Matériau de la pièce        : %s\n', res.nomMateriau);
+fprintf(fid, '   Couple de l''actionneur      : %.3f N.m (%s)\n', P.actionneur.couple, origineCouple);
+fprintf(fid, '   Facteur de sécurité cible   : %.2f\n', FScible);
+fprintf(fid, '   Durées des rotations        : %s\n', origineDurees);
+fprintf(fid, '   Loi de mouvement            : polynomiale cubique (degre 3)\n\n');
+
+fprintf(fid, '   DURÉES QUI EN DÉCOULENT (résultats, pas des entrées)\n');
+fprintf(fid, '   Transfert avec pièce (étape 4) : %.3f s\n', res.T);
+fprintf(fid, '   Retour à vide (étape 2)        : %.3f s\n\n', res.Tretour);
 
 % --- 2. Résultats du matériau choisi ---------------------------------------------------------
 fprintf(fid, '2. RÉSULTATS POUR LE MATÉRIAU CHOISI (%s)\n', res.nomMateriau);
@@ -85,40 +116,53 @@ end
 fprintf(fid, '\n');
 
 % --- 3. Comparaison des matériaux ----------------------------------------------------------------
-fprintf(fid, '3. COMPARAISON DES MATÉRIAUX (même durée T = %.3f s, même loi)\n', res.T);
-fprintf(fid, '   %-12s %10s %10s %16s %10s %12s\n', ...
-        'Matériau', 'Masse (g)', 'Poids (N)', 'Effort max (N)', 'FS min', 'T min (s)');
+if modeDurees == 1
+    fprintf(fid, '3. COMPARAISON DES MATÉRIAUX (chacun à SA durée minimale, couple %.2f N.m)\n', ...
+            P.actionneur.couple);
+else
+    fprintf(fid, '3. COMPARAISON DES MATÉRIAUX (même durée mesurée T = %.3f s)\n', res.T);
+end
+fprintf(fid, '   %-12s %10s %10s %10s %16s %10s %12s\n', ...
+        'Matériau', 'Masse (g)', 'Poids (N)', 'T (s)', 'Effort max (N)', 'FS min', 'Cycle (s)');
 for i = 1:numel(R)
-    if isnan(Tmin(i))
-        texteTmin = 'non calculé';
+    nom = P.materiaux(i).nom;
+    m   = massePiece(P, i);
+    if isempty(R{i})
+        fprintf(fid, '   %-12s %10.2f %10.4f   impossible : couple insuffisant\n', ...
+                nom, m * 1000, m * P.g);
     else
-        texteTmin = sprintf('%.4f', Tmin(i));
+        fprintf(fid, '   %-12s %10.2f %10.4f %10.3f %16.4f %10.3f %12.3f\n', nom, ...
+                m * 1000, m * P.g, R{i}.T, R{i}.FnormeMax, R{i}.FSmin, R{i}.dureeCycle);
     end
-    fprintf(fid, '   %-12s %10.2f %10.4f %16.4f %10.3f %12s\n', R{i}.nomMateriau, ...
-            R{i}.masse * 1000, R{i}.poids, R{i}.FnormeMax, R{i}.FSmin, texteTmin);
 end
 fprintf(fid, '\n');
 
-% --- 4. Optimisation ----------------------------------------------------------------------------------
-fprintf(fid, '4. OPTIMISATION : DURÉE DE TRANSFERT MINIMALE POUR FS >= %.2f\n', FScible);
-if isempty(infoOpt{iMat})
-    fprintf(fid, '   Optimisation non lancée (bouton « Optimiser : durée minimale »).\n\n');
-else
-    for i = 1:numel(R)
-        info = infoOpt{i};
-        if strcmp(info.statut, 'impossible')
-            fprintf(fid, '   %-12s : %s\n', R{i}.nomMateriau, info.message);
-        else
-            cycleMin = R{i}.dureeCycle - R{i}.T + Tmin(i);
-            fprintf(fid, '   %-12s : T min = %.4f s ; cycle %.3f s -> %.3f s ; cadence %.3f -> %.3f pièces/min\n', ...
-                    R{i}.nomMateriau, Tmin(i), R{i}.dureeCycle, cycleMin, R{i}.cadence, 60 / cycleMin);
-            fprintf(fid, '                  contrainte active : %s (ventouse %.4f s ; couple %.4f s ; fréquence %.4f s)\n', ...
-                    upper(info.limite), info.Tventouse, info.Tcouple, info.Tfrequence);
-        end
+% --- 4. Durées minimales permises par le couple --------------------------------------------------------
+fprintf(fid, '4. DURÉES MINIMALES AU COUPLE DE %.2f N.m ET POUR FS >= %.2f\n', ...
+        P.actionneur.couple, FScible);
+fprintf(fid, '   La durée d''une rotation est un RÉSULTAT : la plus courte qui respecte à la\n');
+fprintf(fid, '   fois le couple de l''actionneur, la ventouse et la fréquence maximale.\n');
+for i = 1:numel(R)
+    info = infoOpt{i};
+    nom  = P.materiaux(i).nom;
+    if strcmp(info.statut, 'impossible')
+        fprintf(fid, '   %-12s : %s\n', nom, info.message);
+    else
+        fprintf(fid, '   %-12s : transfert T min = %.4f s ; contrainte active : %s\n', ...
+                nom, Tmin(i), upper(info.limite));
+        fprintf(fid, '                  (ventouse %.4f s ; couple %.4f s ; fréquence %.4f s)\n', ...
+                info.Tventouse, info.Tcouple, info.Tfrequence);
     end
-    fprintf(fid, '   Méthode : dichotomie sur les trois contraintes (dureeMinimale.m\n');
-    fprintf(fid, '             et dureeCouple.m), précision de %g s.\n\n', P.recherche.tolerance);
 end
+if isnan(TretourMin)
+    fprintf(fid, '   Retour à vide : impossible ou non calculé\n');
+else
+    fprintf(fid, '   Retour à vide : T min = %.4f s ; contrainte active : COUPLE\n', TretourMin);
+end
+fprintf(fid, '   Méthode : dichotomie sur les trois contraintes (dureeMinimale.m\n');
+fprintf(fid, '             et dureeCouple.m), précision de %g s.\n', P.recherche.tolerance);
+fprintf(fid, '   Comparaison : cycle mesuré sur la vidéo = %.2f s (%.2f pièces/min).\n\n', ...
+        P.dureeCycle, 60 / P.dureeCycle);
 
 % --- 5. État de la prise et domaine de validité --------------------------------------------------------------
 fprintf(fid, '5. ÉTAT DE LA PRISE ET DOMAINE DE VALIDITÉ (matériau choisi)\n');
