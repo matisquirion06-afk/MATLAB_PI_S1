@@ -286,8 +286,13 @@ P.actionneur.dureeMin = 1 / (2 * P.actionneur.frequenceMax);   % [s]
 % [Claude] Position du centre de masse : on suppose une barre uniforme de
 % 200 mm dont le pivot est à 11,5 mm d'un bout, donc un centre de masse à
 % 100 - 11,5 = 88,5 mm du pivot.
-% Statut : PROVISOIRE (à remplacer par les « Propriétés de masse » de
-% SolidWorks calculées par rapport à l'axe du pivot).
+% Statut : PROVISOIRE, retenu par l'équipe le 18 nov. 2026 en attendant
+% les « Propriétés de masse » de SolidWorks par rapport à l'axe du pivot.
+% Vérification partielle (Matis, 18 nov. 2026) : l'assemblage MPS-12
+% entier (bras + ensemble ventouse, repère par défaut) donne 0,842 lb =
+% 0,382 kg et Lyy = 5,207 lb.po^2 = 1,524e-3 kg.m^2 au centre de gravité.
+% Le modèle (0,311 + 0,076 kg, barre uniforme) donne 0,387 kg (-1,3 %) et
+% 1,515e-3 kg.m^2 (+0,6 %). Les 0,311 kg ne contiennent donc PAS le vérin.
 P.bras.masse    = 0.311;    % [kg]
 P.bras.longueur = 0.200;    % [m]
 P.bras.distCM   = 0.0885;   % [m] distance pivot -> centre de masse
