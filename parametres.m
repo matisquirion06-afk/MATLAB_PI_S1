@@ -228,18 +228,35 @@ P.duree.attentePrise = attentes * partPrise;          % [s]
 P.duree.attenteDepot = attentes * (1 - partPrise);    % [s]
 
 %% ------------------------------------------------------------------------
-%  7. ACTIONNEUR ET MASSES EN ROTATION (vérification facultative)
+%  7. ACTIONNEUR ET MASSES EN ROTATION
 % -------------------------------------------------------------------------
-% La consigne permet d'ajouter « le moment au pivot ». On s'en sert ici
-% comme LIMITE DU DOMAINE DE VALIDITÉ : si le couple demandé dépasse celui
-% de l'actionneur, l'interface l'indique (voir momentPivot.m).
-P.actionneur.verifier = true;   % true = faire la vérification ; false = non
+% La consigne permet d'ajouter « le moment au pivot ». Le couple de
+% l'actionneur sert à deux choses :
+%   1. il FIXE la durée minimale de chaque rotation (dureeCouple.m) ;
+%   2. il borne le domaine de validité : si le couple requis le dépasse,
+%      l'interface l'indique (verifierDomaine.m).
+% Mettre verifier = false désactive les deux : le couple tapé dans
+% l'interface n'aurait alors plus aucun effet. À laisser à true.
+P.actionneur.verifier = true;
 
 % [Fourni] Catalogue Festo « Semi-rotary drive, metric DSR » (2025/03),
 % p. 4, taille 16 : couple théorique de 2 N.m à 6 bar ; fréquence maximale
 % d'oscillation de 3 Hz à 6 bar. Statut : CONFIRMÉ (catalogue).
-P.actionneur.couple       = 2.0;    % [N.m]
-P.actionneur.frequenceMax = 3;      % [Hz]
+P.actionneur.coupleCatalogue = 2.0; % [N.m] valeur du constructeur
+P.actionneur.frequenceMax    = 3;   % [Hz]
+
+% Couple UTILISÉ par le calcul. Depuis le 18 nov. 2026, c'est l'ENTRÉE
+% principale de l'interface : la durée de chaque rotation en découle.
+% Par défaut, on prend le couple du constructeur directement :
+%   - le réseau est à 6 bar (Infos visite Cégep.docx, 24 juin), soit la
+%     pression de référence du catalogue, donc aucune conversion ;
+%   - on ne modélise PAS le couple en fonction de la pression : pour un
+%     vérin rotatif, il n'existe pas de formule géométrique normalisée
+%     (Techniques de l'Ingénieur BM 6 100, section 6.2.1) ;
+%   - rendement de 100 % : aucune donnée de pertes n'est publiée pour le
+%     DSR-16 (décision d'équipe du 18 nov. 2026).
+% Voir le document « Limites du modèle ».
+P.actionneur.couple = P.actionneur.coupleCatalogue;     % [N.m]
 
 % Durée minimale d'une rotation que l'actionneur peut réaliser.
 % [Claude] Interprétation : 3 Hz = 3 allers-retours par seconde, donc un
@@ -278,7 +295,9 @@ P.recherche.tolerance  = 1e-5;      % [s] précision sur T_min (0,01 ms)
 % Limites acceptées pour les valeurs tapées dans l'interface
 % (voir validerEntrees.m). [Claude] Bornes de saisie pour éviter les
 % fautes de frappe ; elles ne sont pas des limites physiques.
-P.saisie.Tmax  = 20;        % [s] durée de transfert maximale acceptée
-P.saisie.FSmax = 100;       % [-] facteur de sécurité maximal accepté
+% La borne du couple est celui du plus gros DSR du catalogue (taille 40),
+% pour permettre d'étudier un actionneur plus gros que le DSR-16.
+P.saisie.coupleMax = 20;    % [N.m] couple maximal accepté
+P.saisie.FSmax     = 100;   % [-] facteur de sécurité maximal accepté
 
 end

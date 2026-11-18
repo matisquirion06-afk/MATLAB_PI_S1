@@ -13,10 +13,25 @@ function RED_IUG()
 %        le facteur de sécurité de la prise.
 %     c) Elle permet de changer de matériau et compare les trois matériaux
 %        dans un tableau.
-%     d) Elle calcule la durée de transfert minimale qui respecte le
-%        facteur de sécurité cible (bouton « Optimiser »).
+%     d) Elle calcule la durée de chaque rotation à partir du COUPLE de
+%        l'actionneur : la durée est un résultat, pas une entrée. C'est la
+%        plus courte qui respecte à la fois le couple disponible et le
+%        facteur de sécurité cible.
 %     Elle refuse les entrées invalides, signale les résultats hors du
 %     domaine de validité et sauvegarde les résultats dans un fichier texte.
+%
+%   LES ENTRÉES (colonne de gauche)
+%     - le matériau de la pièce ;
+%     - le couple de l'actionneur, 2,00 N.m par défaut (catalogue Festo) ;
+%     - le facteur de sécurité cible ;
+%     - l'origine des durées des rotations :
+%         « calculée à ce couple »  : la plus courte possible (par défaut) ;
+%         « mesurée sur la vidéo »  : le montage réel, ralenti par ses
+%                                     limiteurs de débit.
+%     [Claude] Avant le 18 nov. 2026, la durée du transfert se tapait dans
+%     une case et un bouton « Optimiser » calculait la durée minimale. On a
+%     inversé la relation : le couple est la variable indépendante, la
+%     durée en découle. Le calcul de la durée minimale est donc permanent.
 %
 %   COMMENT CE FICHIER EST ORGANISÉ
 %     Ce fichier ne contient AUCUNE équation de physique. Il s'occupe
@@ -28,7 +43,7 @@ function RED_IUG()
 %       A. Construction de la fenêtre      (construireInterface, ...)
 %       B. Calcul et affichage             (mettreAJour, afficher...)
 %       C. Animation                       (lancerAnimation, ...)
-%       D. Autres boutons                  (optimiser, sauvegarder, ...)
+%       D. Autres boutons                  (retablirCouple, sauvegarder, ...)
 %
 %   TROIS NOTIONS UTILES POUR LIRE CE FICHIER
 %     1. POIGNÉE (handle) : référence vers un objet graphique (bouton,
@@ -65,18 +80,16 @@ fig = figure('Name', 'Système ramasse-dépose (RED) - Équipe 14', ...
 % --- 3. Préparer la mémoire de la fenêtre (structure S) --------------------------
 S.P          = P;                       % les paramètres
 S.iMat       = P.materiauDefaut;        % numéro du matériau choisi
-S.T          = P.duree.transfert;       % [s] durée du transfert
 S.FScible    = P.FScible;               % [-] facteur de sécurité cible
+S.modeDurees = 1;                       % 1 = calculée au couple ; 2 = mesurée (vidéo)
 S.valide     = false;                   % vrai si les entrées sont valides
 S.R          = cell(1, nMat);           % résultats : S.R{i} pour le matériau i
+                                        %   ([] si le couple ne suffit pas)
 S.scene      = [];                      % poignées de l'animation
-S.Tretour    = P.duree.retour;          % [s] durée du retour à vide utilisée
-S.Tmin       = NaN(1, nMat);            % [s] durées minimales (NaN = pas calculées)
+S.Tmin       = NaN(1, nMat);            % [s] durée minimale du transfert, par matériau
 S.TretourMin = NaN;                     % [s] durée minimale du retour à vide
-S.infoRetour = [];                      % informations sur l'optimisation du retour
-S.infoOpt    = cell(1, nMat);           % informations sur l'optimisation
-S.optFScible = NaN;                     % FS cible utilisé pour l'optimisation
-S.optLoi     = NaN;                     % loi utilisée pour l'optimisation
+S.infoRetour = [];                      % informations sur le calcul du retour
+S.infoOpt    = cell(1, nMat);           % informations sur le calcul du transfert
 S.enMarche   = false;                   % vrai pendant que l'animation tourne
 S.tCourant   = 0;                       % [s] instant affiché dans le cycle
 S.vitesses   = [0.1, 0.25, 0.5, 1, 2];  % vitesses d'animation proposées
@@ -121,30 +134,37 @@ h.popMateriau = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
     'String', {P.materiaux.nom}, 'Value', S.iMat, ...
     'Callback', @(~, ~) mettreAJour(fig));
 
-% --- Choix de la loi de mouvement (menu déroulant) ---
-
-%etiquette(pan, [0.05 0.878 0.90 0.026], 'Loi de mouvement du bras', false);
-%h.popLoi = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
-%    'Units', 'normalized', 'Position', [0.05 0.840 0.90 0.038], ...
-%    'String', P.loisAffichage, 'Value', S.iLoi, ...
-%    'Callback', @(~, ~) mettreAJour(fig));
-
-% --- Durée du transfert (case à remplir) ---
-etiquette(pan, [0.05 0.797 0.63 0.028], 'Durée du transfert T (s)', false);
-h.editT = uicontrol('Parent', pan, 'Style', 'edit', ...
-    'Units', 'normalized', 'Position', [0.69 0.795 0.26 0.038], ...
-    'String', sprintf('%.3f', S.T), 'BackgroundColor', [1 1 1], ...
+% --- Couple de l'actionneur (case à remplir) : l'ENTRÉE principale ---
+% La durée des rotations n'est plus tapée : elle découle de ce couple.
+etiquette(pan, [0.05 0.874 0.63 0.028], 'Couple de l''actionneur (N.m)', false);
+h.editCouple = uicontrol('Parent', pan, 'Style', 'edit', ...
+    'Units', 'normalized', 'Position', [0.69 0.872 0.26 0.038], ...
+    'String', sprintf('%.2f', P.actionneur.couple), 'BackgroundColor', [1 1 1], ...
     'Callback', @(~, ~) mettreAJour(fig));
 
 % --- Facteur de sécurité cible (case à remplir) ---
-etiquette(pan, [0.05 0.752 0.63 0.028], 'Facteur de sécurité cible', false);
+etiquette(pan, [0.05 0.829 0.63 0.028], 'Facteur de sécurité cible', false);
 h.editFS = uicontrol('Parent', pan, 'Style', 'edit', ...
-    'Units', 'normalized', 'Position', [0.69 0.750 0.26 0.038], ...
+    'Units', 'normalized', 'Position', [0.69 0.827 0.26 0.038], ...
     'String', sprintf('%.2f', S.FScible), 'BackgroundColor', [1 1 1], ...
     'Callback', @(~, ~) mettreAJour(fig));
 
-bouton(pan, [0.05 0.704 0.90 0.038], 'Rétablir la durée de la vidéo', ...
-       @(~, ~) retablirDuree(fig));
+% --- D'où viennent les durées des rotations (menu déroulant) ---
+% 1. Calculée : la plus courte que permettent le couple et la ventouse.
+% 2. Vidéo    : les durées mesurées sur le montage réel, qui est ralenti
+%               par ses limiteurs de débit. Sert à comparer au montage.
+etiquette(pan, [0.05 0.789 0.90 0.026], 'Durée des rotations', false);
+h.popMode = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
+    'Units', 'normalized', 'Position', [0.05 0.751 0.90 0.038], ...
+    'String', {'Calculée à ce couple (vitesse maximale)', ...
+               sprintf('Mesurée sur la vidéo (%.3f s et %.3f s)', ...
+                       P.duree.transfert, P.duree.retour)}, ...
+    'Value', S.modeDurees, ...
+    'Callback', @(~, ~) mettreAJour(fig));
+
+bouton(pan, [0.05 0.704 0.90 0.038], ...
+       sprintf('Couple du catalogue Festo (%.2f N.m)', P.actionneur.coupleCatalogue), ...
+       @(~, ~) retablirCouple(fig));
 
 % --- Animation ---
 etiquette(pan, [0.05 0.662 0.90 0.028], 'ANIMATION DU CYCLE', true);
@@ -172,17 +192,14 @@ h.caseZoom = uicontrol('Parent', pan, 'Style', 'checkbox', ...
     'BackgroundColor', fond, ...
     'Callback', @(~, ~) changerZoom(fig));
 
-% Valeurs à l'instant affiché (mises à jour pendant l'animation)
+% Valeurs à l'instant affiché (mises à jour pendant l'animation).
+% [Claude] La zone est plus haute qu'avant le 18 nov. 2026 : les boutons
+% « Optimiser » et « Appliquer » ont disparu (le calcul de la durée est
+% maintenant permanent) et le couple instantané a été ajouté.
+etiquette(pan, [0.05 0.428 0.90 0.028], 'VALEURS À L''INSTANT AFFICHÉ', true);
 h.txtInstant = uicontrol('Parent', pan, 'Style', 'text', ...
-    'Units', 'normalized', 'Position', [0.05 0.318 0.90 0.142], ...
+    'Units', 'normalized', 'Position', [0.05 0.196 0.90 0.228], ...
     'String', '', 'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1]);
-
-% --- Optimisation ---
-etiquette(pan, [0.05 0.280 0.90 0.028], 'OPTIMISATION', true);
-bouton(pan, [0.05 0.234 0.90 0.042], 'Optimiser : durée minimale', ...
-       @(~, ~) optimiser(fig));
-bouton(pan, [0.05 0.188 0.90 0.042], 'Appliquer la durée minimale', ...
-       @(~, ~) appliquerDureeMinimale(fig));
 
 % --- Résultats et vérification ---
 etiquette(pan, [0.05 0.148 0.90 0.028], 'RÉSULTATS ET VÉRIFICATION', true);
@@ -354,18 +371,27 @@ end
 function mettreAJour(fig)
 % METTREAJOUR  Lit les entrées, les valide, refait les calculs et rafraîchit l'affichage.
 %   Cette fonction est appelée à l'ouverture, puis chaque fois que
-%   l'utilisateur change le matériau, la loi, la durée ou le facteur de sécurité.
+%   l'utilisateur change le matériau, le couple, le facteur de sécurité ou
+%   l'origine des durées.
+%
+%   L'ORDRE DES CALCULS (depuis le 18 nov. 2026)
+%     couple de l'actionneur  ->  durée minimale de chaque rotation
+%                             ->  cycle complet de chaque matériau
+%   La durée n'est jamais tapée : elle est soit calculée à partir du
+%   couple, soit lue dans les mesures de la vidéo.
 
 S = guidata(fig);
 S.enMarche = false;                     % toute animation en cours est arrêtée
+nMat = numel(S.P.materiaux);
 
 % --- 1. Lire les choix de l'utilisateur ------------------------------------------
-S.iMat  = get(S.h.popMateriau, 'Value');    % numéro de la ligne choisie
-T       = lireNombre(S.h.editT);
-FScible = lireNombre(S.h.editFS);
+S.iMat       = get(S.h.popMateriau, 'Value');   % numéro de la ligne choisie
+S.modeDurees = get(S.h.popMode, 'Value');       % 1 = calculée, 2 = vidéo
+couple       = lireNombre(S.h.editCouple);
+FScible      = lireNombre(S.h.editFS);
 
 % --- 2. Valider les entrées AVANT de calculer --------------------------------------
-[valide, message] = validerEntrees(S.P, T, FScible);
+[valide, message] = validerEntrees(S.P, couple, FScible);
 
 if ~valide
     % Entrée invalide : on n'affiche AUCUN résultat (exigence de la consigne).
@@ -377,27 +403,72 @@ if ~valide
     return;
 end
 
-S.valide  = true;
-S.T       = T;
 S.FScible = FScible;
 
-% --- 3. Calculer le cycle pour les trois matériaux -----------------------------------
-for i = 1:numel(S.P.materiaux)
-    S.R{i} = calculerCycle(S.P, i, S.T, S.Tretour);
+% Le couple tapé devient LE couple de l'actionneur pour tous les calculs
+% qui suivent (dureeCouple.m, verifierDomaine.m, sauvegarde, etc.).
+S.P.actionneur.couple = couple;
+
+% --- 3. Durées minimales permises par ce couple ----------------------------------------
+% Transfert : une durée par matériau (la rondelle portée change l'inertie
+% et le critère de la ventouse). Retour à vide : une seule durée.
+for i = 1:nMat
+    [S.Tmin(i), S.infoOpt{i}] = dureeMinimale(S.P, i, S.FScible);
+end
+[S.TretourMin, S.infoRetour] = dureeCouple(S.P, 0, S.P.thetaDepot, S.P.thetaPrise);
+if S.P.actionneur.verifier && ~isnan(S.TretourMin)
+    S.TretourMin = max(S.TretourMin, S.P.actionneur.dureeMin);
 end
 
-% --- 4. L'optimisation précédente est-elle encore valable ? ---------------------------
-% La durée minimale dépend du facteur de sécurité cible. Si il a changé, on
-% efface l'ancien résultat pour ne pas afficher une valeur périmée.
-if ~(S.FScible == S.optFScible)
-    S.Tmin(:)    = NaN;
-    S.TretourMin = NaN;
-    S.infoRetour = [];
-    S.infoOpt    = cell(1, numel(S.P.materiaux));
-    S.optFScible = NaN;
+% --- 4. Durées réellement utilisées pour le cycle -----------------------------------------
+% On arrondit VERS LE HAUT au millième de seconde (fonction ceil) pour
+% rester du côté sûr : une durée un peu plus longue donne un FS un peu
+% plus grand que la cible, jamais plus petit, et un couple requis un peu
+% plus petit que celui de l'actionneur, jamais plus grand.
+if S.modeDurees == 1
+    Ttransfert = ceil(S.Tmin * 1000) / 1000;          % un par matériau
+    Tretour    = ceil(S.TretourMin * 1000) / 1000;
+else
+    Ttransfert = S.P.duree.transfert * ones(1, nMat); % mesures de la vidéo
+    Tretour    = S.P.duree.retour;
 end
 
-% --- 5. Redessiner l'animation au début du cycle --------------------------------------
+% --- 5. Calculer le cycle pour les trois matériaux ---------------------------------------
+% Un matériau que ce couple ne peut pas soulever reste vide ([]) : le
+% tableau l'affichera comme « impossible ». (En mode vidéo, les durées
+% sont imposées, donc tous les cycles existent ; si le couple ne permet
+% pas de les tenir, verifierDomaine le signalera.)
+for i = 1:nMat
+    if isnan(Ttransfert(i)) || isnan(Tretour)
+        S.R{i} = [];
+    else
+        S.R{i} = calculerCycle(S.P, i, Ttransfert(i), Tretour);
+    end
+end
+
+% --- 6. Le couple suffit-il pour le matériau choisi ? -------------------------------------
+% Si la gravité seule demande déjà plus que l'actionneur ne donne, aucune
+% durée ne convient : ce n'est pas une erreur de saisie, c'est un résultat.
+% On garde quand même le tableau à l'écran : il montre quels matériaux
+% CE couple permet de déplacer.
+if isempty(S.R{S.iMat})
+    if isnan(Tretour)
+        explication = S.infoRetour.message;
+    else
+        explication = S.infoOpt{S.iMat}.message;
+    end
+    S.valide = false;
+    guidata(fig, S);
+    effacerResultats(S);
+    afficherTableau(S);
+    afficherMessage(S.h, 'alerte', {sprintf(['COUPLE INSUFFISANT (%.2f N.m) ' ...
+        'pour le matériau %s.'], couple, S.P.materiaux(S.iMat).nom), explication});
+    return;
+end
+
+S.valide = true;
+
+% --- 7. Redessiner l'animation au début du cycle --------------------------------------
 S.tCourant = 0;
 S.scene    = creerScene(S.h.axScene, S.P, S.R{S.iMat});
 
@@ -406,13 +477,13 @@ S.scene    = creerScene(S.h.axScene, S.P, S.R{S.iMat});
 set(S.h.glissiere, 'Value', 0);
 set(S.h.glissiere, 'Max', S.R{S.iMat}.dureeCycle);
 
-% --- 6. Enregistrer, puis rafraîchir tout l'affichage ----------------------------------
+% --- 8. Enregistrer, puis rafraîchir tout l'affichage ----------------------------------
 guidata(fig, S);
 
 afficherTraces(S);
 afficherValeurs(S);
 afficherTableau(S);
-afficherOptimisation(S);
+afficherDurees(S);
 afficherInstant(S);
 
 [niveau, lignes] = verifierDomaine(S.P, S.R{S.iMat}, S.FScible);
@@ -527,21 +598,37 @@ end
 
 function afficherTableau(S)
 % AFFICHERTABLEAU  Remplit le tableau comparatif des trois matériaux.
-%   Une ligne par matériau. La colonne « T min » reste vide tant que
-%   l'optimisation n'a pas été lancée.
+%   Une ligne par matériau. En mode « durée calculée », chaque matériau
+%   tourne à SA propre durée minimale : le tableau compare donc les trois
+%   matériaux chacun à sa vitesse maximale. La colonne « T min » donne
+%   cette durée minimale du transfert, au couple choisi.
+%
+%   Si le couple ne suffit pas à soulever un matériau, sa ligne indique
+%   « impossible » au lieu des résultats.
 
 nMat    = numel(S.P.materiaux);
 donnees = cell(nMat, 6);                % tableau de cellules (texte)
 
 for i = 1:nMat
-    res = S.R{i};
-    donnees{i, 1} = res.nomMateriau;
-    donnees{i, 2} = sprintf('%.1f', res.masse * 1000);
-    donnees{i, 3} = sprintf('%.3f', res.poids);
-    donnees{i, 4} = sprintf('%.3f', res.FnormeMax);
-    donnees{i, 5} = sprintf('%.2f', res.FSmin);
+    m = massePiece(S.P, i);             % la masse ne dépend pas du couple
+    donnees{i, 1} = S.P.materiaux(i).nom;
+    donnees{i, 2} = sprintf('%.1f', m * 1000);
+    donnees{i, 3} = sprintf('%.3f', m * S.P.g);
+
+    if isempty(S.R{i})
+        % Couple insuffisant pour ce matériau : aucun cycle possible
+        donnees{i, 4} = '-';
+        donnees{i, 5} = '-';
+    else
+        donnees{i, 4} = sprintf('%.3f', S.R{i}.FnormeMax);
+        donnees{i, 5} = sprintf('%.2f', S.R{i}.FSmin);
+    end
+
+    % En mode vidéo, le cycle est calculé avec les durées mesurées même si
+    % le couple choisi ne permettrait pas de les atteindre : la durée
+    % minimale peut donc être impossible alors que le cycle existe.
     if isnan(S.Tmin(i))
-        donnees{i, 6} = '-';            % optimisation pas encore lancée
+        donnees{i, 6} = 'impossible';
     else
         donnees{i, 6} = sprintf('%.3f', S.Tmin(i));
     end
@@ -552,70 +639,66 @@ set(S.h.tableau, 'Data', donnees);
 end
 
 
-function afficherOptimisation(S)
-% AFFICHEROPTIMISATION  Écrit le résultat de l'optimisation pour le matériau choisi.
+function afficherDurees(S)
+% AFFICHERDUREES  Explique d'où viennent les durées des deux rotations
+%   du matériau choisi, et ce qu'elles donnent sur le cycle complet.
+%
+%   [Claude] Remplace depuis le 18 nov. 2026 l'affichage du bouton
+%   « Optimiser » : le calcul de la durée minimale est maintenant fait à
+%   chaque mise à jour, puisque la durée découle du couple.
 
-i = S.iMat;
+i     = S.iMat;
+res   = S.R{i};
+info  = S.infoOpt{i};
+P     = S.P;
+cVid  = P.dureeCycle;                   % [s] cycle mesuré sur la vidéo
 
-% Optimisation pas encore lancée (ou effacée parce qu'une entrée a changé)
-if isempty(S.infoOpt{i})
-    set(S.h.txtOptim, 'String', { ...
-        'OPTIMISATION', ...
-        'Cliquer sur « Optimiser : durée minimale » pour', ...
-        'calculer la plus petite durée de transfert qui', ...
-        'respecte le facteur de sécurité cible.'});
-    return;
-end
+if S.modeDurees == 1
+    % ---------- Durées CALCULÉES à partir du couple ----------
+    lignes = {sprintf('DURÉES DES ROTATIONS - %s, couple %.2f N.m', ...
+                      res.nomMateriau, P.actionneur.couple)};
 
-info = S.infoOpt{i};
-Tmin = S.Tmin(i);
-res  = S.R{i};
-
-lignes = {sprintf('OPTIMISATION - %s, FS cible = %.2f', res.nomMateriau, S.optFScible)};
-
-if strcmp(info.statut, 'impossible')
-    lignes{end+1} = info.message;
-else
-    % --- Étape 4 : le transfert ---
-    lignes{end+1} = sprintf('Transfert (étape 4) : %.3f s -> %.3f s', res.T, Tmin);
+    % Étape 4 : le transfert, et la contrainte qui l'a fixé
+    lignes{end+1} = sprintf('Transfert (étape 4) : %.3f s', res.T);
     lignes{end+1} = sprintf('   Limite active : %s', upper(info.limite));
     if ~isnan(info.Tcouple)
         lignes{end+1} = sprintf('   ventouse %.3f s | couple %.3f s | fréq. %.3f s', ...
                                 info.Tventouse, info.Tcouple, info.Tfrequence);
     end
 
-    % --- Étape 2 : le retour à vide ---
-    % Sans rondelle, il n'y a pas de critère de succion : seul
-    % l'actionneur limite cette rotation.
-    TretourMin = S.TretourMin;
-    if isnan(TretourMin)
-        TretourMin = res.Tretour;       % pas encore calculé
+    % Étape 2 : le retour à vide. Sans rondelle, aucun critère de succion :
+    % seul l'actionneur limite cette rotation.
+    lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s', res.Tretour);
+    lignes{end+1} = '   Limite active : COUPLE (aucune rondelle portée)';
+
+    % Le cycle complet, comparé au montage actuel
+    lignes{end+1} = sprintf('Cycle : %.2f s, soit %.2f pièces/min', ...
+                            res.dureeCycle, res.cadence);
+    lignes{end+1} = sprintf('   (vidéo : %.2f s, soit %.2f pièces/min)', cVid, 60 / cVid);
+
+else
+    % ---------- Durées MESURÉES sur la vidéo ----------
+    lignes = {sprintf('DURÉES DES ROTATIONS - %s, mesurées sur la vidéo', res.nomMateriau)};
+
+    lignes{end+1} = sprintf('Transfert (étape 4) : %.3f s', res.T);
+    if isnan(S.Tmin(i))
+        lignes{end+1} = sprintf('   minimum à %.2f N.m : impossible (couple insuffisant)', ...
+                                P.actionneur.couple);
     else
-        lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s -> %.3f s', ...
-                                res.Tretour, TretourMin);
-        lignes{end+1} = '   Limite active : COUPLE (aucune rondelle portée)';
+        lignes{end+1} = sprintf('   minimum à %.2f N.m : %.3f s', P.actionneur.couple, S.Tmin(i));
     end
 
-    % --- Effet sur le cycle complet ---
-    % Les deux attentes ne changent pas ; les deux rotations, oui.
-    cycleMin = res.dureeCycle - res.T + Tmin - res.Tretour + TretourMin;
-    lignes{end+1} = sprintf('Cycle : %.2f s -> %.2f s', res.dureeCycle, cycleMin);
-    lignes{end+1} = sprintf('Cadence : %.2f -> %.2f pièces/min', res.cadence, 60 / cycleMin);
-
-    % --- Vérification : le résultat est-il bien réalisable ? ---
-    % Ce contrôle doit maintenant rester muet. S'il parle encore, c'est
-    % que les contraintes de dureeMinimale.m sont incomplètes.
-    if S.P.actionneur.verifier
-        resMin = calculerCycle(S.P, i, Tmin, TretourMin);
-        if Tmin < S.P.actionneur.dureeMin
-            lignes{end+1} = sprintf('ATTENTION : sous la limite de l''actionneur (%.3f s).', ...
-                                    S.P.actionneur.dureeMin);
-        end
-        if resMin.coupleMax > S.P.actionneur.couple
-            lignes{end+1} = sprintf('ATTENTION : couple requis %.2f N.m > %.2f N.m (actionneur).', ...
-                resMin.coupleMax, S.P.actionneur.couple);
-        end
+    lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s', res.Tretour);
+    if isnan(S.TretourMin)
+        lignes{end+1} = sprintf('   minimum à %.2f N.m : impossible (couple insuffisant)', ...
+                                P.actionneur.couple);
+    else
+        lignes{end+1} = sprintf('   minimum à %.2f N.m : %.3f s', P.actionneur.couple, S.TretourMin);
     end
+
+    lignes{end+1} = sprintf('Cycle : %.2f s, soit %.2f pièces/min', ...
+                            res.dureeCycle, res.cadence);
+    lignes{end+1} = 'Le montage réel est ralenti par ses limiteurs de débit.';
 end
 
 set(S.h.txtOptim, 'String', lignes);
@@ -656,7 +739,8 @@ lignes = { ...
     sprintf('t = %.2f s  (étape %d de 4)', t, res.etape(k)), ...
     sprintf('Angle : %.1f°', res.theta(k) * 180/pi), ...
     sprintf('Vitesse : %.2f rad/s', res.omega(k)), ...
-    sprintf('Accélération : %.1f rad/s²', res.alpha(k))};
+    sprintf('Accélération : %.1f rad/s²', res.alpha(k)), ...
+    sprintf('Couple au pivot : %.2f N.m (sur %.2f)', abs(res.couple(k)), S.P.actionneur.couple)};
 
 if res.tenue(k)
     lignes{end+1} = sprintf('Maintien requis : %.3f N', res.Frequis(k));
@@ -856,83 +940,16 @@ end
 %  GROUPE D - AUTRES BOUTONS
 % =================================================================================
 
-function retablirDuree(fig)
-% RETABLIRDUREE  Remet les deux rotations à leur durée mesurée dans la vidéo.
-S = guidata(fig);
-S.Tretour = S.P.duree.retour;       % [s] on annule aussi l'optimisation du retour
-guidata(fig, S);
-set(S.h.editT, 'String', sprintf('%.3f', S.P.duree.transfert));
-mettreAJour(fig);
-end
-
-
-function optimiser(fig)
-% OPTIMISER  Calcule la durée minimale des DEUX rotations
-%            (bouton « Optimiser : durée minimale »).
+function retablirCouple(fig)
+% RETABLIRCOUPLE  Remet dans la case le couple du catalogue Festo.
 %
-%   Étape 4 (transfert) : limitée par la ventouse ET par l'actionneur,
-%   puisque la rondelle est portée. Une durée par matériau.
-%
-%   Étape 2 (retour à vide) : aucune rondelle, donc aucun critère de
-%   succion. Seul l'actionneur limite, et la durée est la même pour les
-%   trois matériaux.
-
+%   [Claude] Remplace depuis le 18 nov. 2026 les boutons « Rétablir la
+%   durée de la vidéo », « Optimiser » et « Appliquer la durée minimale ».
+%   La durée n'étant plus une entrée, il n'y a plus de durée à rétablir ni
+%   à appliquer : c'est le couple qu'on remet à sa valeur de référence.
 S = guidata(fig);
-if ~S.valide
-    return;                 % entrées invalides : rien à optimiser
-end
-S.enMarche = false;
-
-for i = 1:numel(S.P.materiaux)
-    [S.Tmin(i), S.infoOpt{i}] = dureeMinimale(S.P, i, S.FScible);
-end
-
-% Retour à vide : masse transportée nulle, du dépôt vers la prise.
-[S.TretourMin, S.infoRetour] = dureeCouple(S.P, 0, S.P.thetaDepot, S.P.thetaPrise);
-if S.P.actionneur.verifier
-    S.TretourMin = max(S.TretourMin, S.P.actionneur.dureeMin);
-end
-
-% On note avec quelles entrées l'optimisation a été faite (voir mettreAJour).
-S.optFScible = S.FScible;
-guidata(fig, S);
-
-afficherTableau(S);
-afficherOptimisation(S);
-
-end
-
-
-function appliquerDureeMinimale(fig)
-% APPLIQUERDUREEMINIMALE  Utilise les durées minimales trouvées pour les
-%   DEUX rotations. L'animation et les tracés montrent alors le cycle
-%   optimisé.
-
-S    = guidata(fig);
-Tmin = S.Tmin(S.iMat);
-
-if isnan(Tmin)
-    afficherMessage(S.h, 'avertissement', ...
-        {'Aucune durée minimale à appliquer.', ...
-         'Cliquer d''abord sur « Optimiser : durée minimale ».'});
-    return;
-end
-
-% On arrondit VERS LE HAUT au millième de seconde (fonction ceil), pour
-% rester du côté sûr : une durée un peu plus longue donne un FS un peu
-% plus grand que la cible, jamais plus petit, et un couple un peu plus
-% petit que la capacité de l'actionneur, jamais plus grand.
-Tapplique = ceil(Tmin * 1000) / 1000;
-
-% Le retour à vide suit la même règle d'arrondi.
-if ~isnan(S.TretourMin)
-    S.Tretour = ceil(S.TretourMin * 1000) / 1000;
-    guidata(fig, S);
-end
-
-set(S.h.editT, 'String', sprintf('%.3f', Tapplique));
+set(S.h.editCouple, 'String', sprintf('%.2f', S.P.actionneur.coupleCatalogue));
 mettreAJour(fig);
-
 end
 
 
@@ -956,7 +973,8 @@ if isequal(nomFichier, 0)
 end
 
 chemin = fullfile(dossier, nomFichier);
-reussi = sauvegarderResultats(chemin, S.P, S.R, S.iMat, S.FScible, S.Tmin, S.infoOpt);
+reussi = sauvegarderResultats(chemin, S.P, S.R, S.iMat, S.FScible, S.Tmin, S.infoOpt, ...
+                              S.modeDurees, S.TretourMin);
 
 if reussi
     [niveau, lignes] = verifierDomaine(S.P, S.R{S.iMat}, S.FScible);
@@ -997,7 +1015,9 @@ S = guidata(fig);
 nEchecs = testsRED();
 
 if S.valide
-    verifIndependante(S.P, S.iMat, S.T, S.FScible);
+    % La vérification se fait à la durée de transfert réellement utilisée
+    % pour le matériau choisi (calculée ou mesurée, selon le mode).
+    verifIndependante(S.P, S.iMat, S.R{S.iMat}.T, S.FScible);
 end
 
 if nEchecs == 0
