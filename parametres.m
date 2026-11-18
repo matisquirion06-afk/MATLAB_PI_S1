@@ -298,6 +298,7 @@ P.recherche.tolerance  = 1e-5;      % [s] précision sur T_min (0,01 ms)
 % La borne du couple est celui du plus gros DSR du catalogue (taille 40),
 % pour permettre d'étudier un actionneur plus gros que le DSR-16.
 P.saisie.coupleMax = 20;    % [N.m] couple maximal accepté
+P.saisie.Tmax      = 20;    % [s] durée de transfert imposée maximale acceptée
 P.saisie.FSmax     = 100;   % [-] facteur de sécurité maximal accepté
 
 end

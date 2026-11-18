@@ -19,14 +19,16 @@ function nEchecs = testsRED()
 %     N  cas nominaux        un par matériau, avec les valeurs de la vidéo
 %     L  cas limites         durée minimale, bras immobile, mouvement très lent,
 %                            couple insuffisant
-%     I  entrées invalides   couple nul ou négatif, texte, FS inférieur à 1
+%     I  entrées invalides   couple nul ou négatif, texte, FS inférieur à 1,
+%                            durée imposée nulle, négative ou non numérique
 %     C  cohérence physique  comportements attendus par la consigne
 %     V  vérifications       lois de mouvement et calcul indépendant
 %
 %   [Claude] Depuis le 18 nov. 2026, l'entrée de l'interface est le couple de
-%   l'actionneur et non plus la durée du transfert. Les tests I1 à I3
-%   portent donc sur le couple. Les tests L6 et C4 vérifient le nouveau
-%   lien entre le couple et la durée.
+%   l'actionneur. Les tests I1 à I3 portent sur le couple ; I6 à I8 sur la
+%   durée du transfert, que l'utilisateur peut encore imposer (mode
+%   « durée imposée »). Les tests L6 et C4 vérifient le lien entre le
+%   couple et la durée.
 %
 %   COMMENT UN TEST EST ÉCRIT
 %     Chaque test calcule une valeur « obtenue », la compare à ce qui est
@@ -192,6 +194,26 @@ for k = 1:size(casInvalides, 1)
     end
     tab = ajouter(tab, casInvalides{k, 1}, ['Invalide - ' casInvalides{k, 2}], ...
         sprintf('couple = %g N.m ; FS cible = %g', Mk, FSk), ...
+        'Entrée refusée avec un message', obtenu, ~valide);
+end
+
+% I6 à I8 : durée du transfert imposée par l'utilisateur (mode 3).
+% C'est l'exemple même de la consigne : « durée de transfert nulle ou négative ».
+casDurees = { ...
+    'I6', 'Durée de transfert imposée nulle',            0 ; ...
+    'I7', 'Durée de transfert imposée négative',         -0.5 ; ...
+    'I8', 'Durée imposée non numérique (texte « abc »)', NaN };
+
+for k = 1:size(casDurees, 1)
+    Tk = casDurees{k, 3};
+    [valide, message] = validerEntrees(P, Mcat, FS, Tk);
+    if valide
+        obtenu = 'Entrée acceptée';
+    else
+        obtenu = ['Refusée : ' message];
+    end
+    tab = ajouter(tab, casDurees{k, 1}, ['Invalide - ' casDurees{k, 2}], ...
+        sprintf('T = %g s ; couple = %g N.m ; FS cible = %g', Tk, Mcat, FS), ...
         'Entrée refusée avec un message', obtenu, ~valide);
 end
 

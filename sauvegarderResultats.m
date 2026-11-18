@@ -16,7 +16,8 @@ function reussi = sauvegarderResultats(chemin, P, R, iMat, FScible, Tmin, infoOp
 %     Tmin        durées minimales du transfert [s], une par matériau (NaN si impossible)
 %     infoOpt     informations sur ces durées (sorties de dureeMinimale.m)
 %     modeDurees  FACULTATIF : 1 = durées calculées au couple (par défaut),
-%                              2 = durées mesurées sur la vidéo
+%                              2 = durées mesurées sur la vidéo,
+%                              3 = transfert imposé par l'utilisateur
 %     TretourMin  FACULTATIF : durée minimale du retour à vide [s]
 %
 %   SORTIE
@@ -72,10 +73,13 @@ if abs(P.actionneur.couple - P.actionneur.coupleCatalogue) < 1e-9
 else
     origineCouple = sprintf('MODIFIÉ (catalogue : %.2f N.m)', P.actionneur.coupleCatalogue);
 end
-if modeDurees == 1
-    origineDurees = 'calculées à ce couple (vitesse maximale)';
-else
-    origineDurees = 'mesurées sur la vidéo';
+switch modeDurees
+    case 1
+        origineDurees = 'calculées à ce couple (vitesse maximale)';
+    case 2
+        origineDurees = 'mesurées sur la vidéo';
+    otherwise
+        origineDurees = 'transfert imposé par l''utilisateur, retour mesuré sur la vidéo';
 end
 
 fprintf(fid, '1. ENTRÉES CHOISIES DANS L''INTERFACE\n');
@@ -120,7 +124,7 @@ if modeDurees == 1
     fprintf(fid, '3. COMPARAISON DES MATÉRIAUX (chacun à SA durée minimale, couple %.2f N.m)\n', ...
             P.actionneur.couple);
 else
-    fprintf(fid, '3. COMPARAISON DES MATÉRIAUX (même durée mesurée T = %.3f s)\n', res.T);
+    fprintf(fid, '3. COMPARAISON DES MATÉRIAUX (même durée T = %.3f s pour les trois)\n', res.T);
 end
 fprintf(fid, '   %-12s %10s %10s %10s %16s %10s %12s\n', ...
         'Matériau', 'Masse (g)', 'Poids (N)', 'T (s)', 'Effort max (N)', 'FS min', 'Cycle (s)');
