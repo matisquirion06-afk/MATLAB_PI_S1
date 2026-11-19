@@ -34,19 +34,25 @@ function M = momentPivot(P, masseTransportee, theta, alpha)
 %
 %       Le moment d'inertie I est le moment d'inertie total.
 %               I = Ibras + Iven
-%                  où Ibras est approximé comme étant une barre uniforme de
-%                  longueur L et Iven est le moment d'inertie du système de
-%                  ventouse et est approximé avec le théorème des axes 
-%                  parallèles
-% 
-%               Ibras = mBras * ((lBras^2)/12 + (dCM)^2)
-%               Iven = (mVentouse + mPiece) * (L^2)
+%                  où Ibras est le moment d'inertie du bras autour du
+%                  pivot, tiré de SolidWorks (P.bras.Jpivot, voir
+%                  parametres.m), et Iven est celui du système de ventouse,
+%                  traité comme une masse ponctuelle à l'axe de la poulie
+%                  (la courroie le garde vertical : il se déplace sans
+%                  tourner sur lui-même).
+%
+%               Ibras = P.bras.Jpivot
+%               Iven  = (mVentouse + mPiece) * (L^2)
+%
+%       [Claude] Avant le 19 nov. 2026, Ibras était approximé par une barre
+%       uniforme : mBras * ((lBras^2)/12 + (dCM)^2). La valeur SolidWorks
+%       l'a remplacé ; l'écart est de -1,2 % (test C6 de testsRED.m).
 %
 %       On isole alors le couple transmis par l'actionneur pneumatique
 %           coupleActionneur = (Ibras + Iven)*alpha + (Mgravite)
 %
 % --- 1. Moment d'inertie du bras seul, par rapport au pivot [kg.m^2] -----
-Ibras = P.bras.masse * (P.bras.longueur^2 / 12 + P.bras.distCM^2);
+Ibras = P.bras.Jpivot;
 
 % --- 2. Moment d'inertie du système ventouse [kg.m^2] --------------------
 masseAuBout = P.masseVentouse + masseTransportee;
