@@ -275,10 +275,48 @@ P.actionneur.frequenceMax    = 3;   % [Hz]
 P.actionneur.couple = P.actionneur.coupleCatalogue;     % [N.m]
 
 % Durée minimale d'une rotation que l'actionneur peut réaliser.
-% [Claude] Interprétation : 3 Hz = 3 allers-retours par seconde, donc un
-% aller simple dure au moins 1/(2 x 3) = 0,167 s.
-% Statut : PROVISOIRE (interprétation à confirmer).
-P.actionneur.dureeMin = 1 / (2 * P.actionneur.frequenceMax);   % [s]
+% La fiche Festo ne dit pas si « 3 Hz » compte des allers ou des
+% allers-retours. Décision d'équipe du 19 nov. 2026 : 3 ALLERS (3
+% pivotements) par seconde, donc une rotation dure au moins 1/3 = 0,333 s.
+% C'est l'interprétation PRUDENTE : celle des allers-retours donnerait
+% 0,167 s. [Claude] Avant le 19 nov. 2026, le programme utilisait 0,167 s.
+% Statut : PROVISOIRE (interprétation prudente, la fiche est ambiguë).
+P.actionneur.dureeMin = 1 / P.actionneur.frequenceMax;         % [s]
+
+% --- Limite d'énergie en fin de course (sans butées externes) ---
+% [Fourni] Fiche Festo DSR (2025/03), p. 5 : graphique « Mass moment of
+% inertia as a function of swivel time t and swivel angle for DSR-16 ».
+% Pour un temps de pivotement t, il donne le moment d'inertie MAXIMAL que
+% le vérin peut entraîner sans butées externes. P. 4 : « If the specified
+% maximum permissible mass moments of inertia are exceeded, external stops
+% must be used » (taille 16 : rayon d'au moins 17 mm, effort d'au plus 160 N).
+%
+% [Claude] Ce que représente ce graphique : en fin de course, les tampons
+% élastiques doivent absorber l'énergie cinétique du bras. Les points lus
+% sur la courbe à 180° donnent tous la même énergie, calculée avec la
+% vitesse moyenne pi/t :
+%       E = 1/2 * J * (pi/t)^2  ~  0,011 J
+% Les courbes à 90° et à 120° donnent la même valeur. On applique donc
+% cette énergie à notre amplitude de 165,5° :
+%       1/2 * J * (Dtheta/T)^2 <= Emax   =>   T >= Dtheta * racine(J/(2*Emax))
+% (voir dureeFesto.m). Points lus sur la courbe [3] (180°), en [s] et en
+% [1e-4 kg.m^2] ; lecture à environ 5 % près :
+P.actionneur.festo.pointsCourbe180 = [0.192 0.78;  0.303 1.97;  0.495 5.4; ...
+                                      0.748 12.4;  1.000 23.0;  1.500 52];
+pts = P.actionneur.festo.pointsCourbe180;
+energiesLues = 0.5 * pts(:, 2) * 1e-4 .* (pi ./ pts(:, 1)).^2;            % [J]
+P.actionneur.festo.energieMax = mean(energiesLues);                        % [J] 0,0109 J
+% Plus grand J lu sur le graphique (à t = 1,5 s). Au-delà, la durée
+% calculée est une EXTRAPOLATION : Festo ne publie aucune valeur.
+P.actionneur.festo.Jgraphique = max(pts(:, 2)) * 1e-4;                     % [kg.m^2]
+% Configuration actuelle : AUCUNE butée externe ni amortisseur ([Fourni]
+% Infos visite Cégep.docx, 24 juin : « Pas d'amortisseurs »). La limite
+% est donc une contrainte stricte. Mettre false pour simuler un montage
+% avec butées externes ou amortisseurs.
+P.actionneur.festo.actif = true;
+% [Fourni] Fiche p. 4 : sous 180°/s (vérin étranglé), il faut au moins
+% 6 bar, et Festo annonce une variation des temps de ±30 %.
+P.actionneur.festo.vitesseEtranglement = 180;                              % [deg/s]
 
 % Bras + pont (pièces MPS-12-005 et MPS-12-002).
 % [Fourni] SolidWorks, « Propriétés de masse » de chaque pièce, mesurées

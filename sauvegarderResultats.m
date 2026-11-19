@@ -126,9 +126,9 @@ if modeDurees == 1
 else
     fprintf(fid, '3. COMPARAISON DES MATÉRIAUX (même durée T = %.3f s pour les trois)\n', res.T);
 end
-fprintf(fid, '   %-12s %10s %10s %10s %16s %10s %12s %12s %14s\n', ...
+fprintf(fid, '   %-12s %10s %10s %10s %16s %10s %12s %12s %14s %13s\n', ...
         'Matériau', 'Masse (g)', 'Poids (N)', 'T (s)', 'Effort max (N)', 'FS min', 'Cycle (s)', ...
-        'T FS (s)', 'T couple (s)');
+        'T FS (s)', 'T couple (s)', 'T Festo (s)');
 for i = 1:numel(R)
     nom = P.materiaux(i).nom;
     m   = massePiece(P, i);
@@ -136,9 +136,9 @@ for i = 1:numel(R)
         fprintf(fid, '   %-12s %10.2f %10.4f   impossible : couple insuffisant\n', ...
                 nom, m * 1000, m * P.g);
     else
-        fprintf(fid, '   %-12s %10.2f %10.4f %10.3f %16.4f %10.3f %12.3f %12.4f %14.4f\n', nom, ...
+        fprintf(fid, '   %-12s %10.2f %10.4f %10.3f %16.4f %10.3f %12.3f %12.4f %14.4f %13.4f\n', nom, ...
                 m * 1000, m * P.g, R{i}.T, R{i}.FnormeMax, R{i}.FSmin, R{i}.dureeCycle, ...
-                infoOpt{i}.Tventouse, infoOpt{i}.Tcouple);
+                infoOpt{i}.Tventouse, infoOpt{i}.Tcouple, infoOpt{i}.Tfesto);
     end
 end
 fprintf(fid, '\n');
@@ -150,7 +150,9 @@ fprintf(fid, '   La durée d''une rotation est un RÉSULTAT : la plus courte qui
 fprintf(fid, '   fois le couple de l''actionneur, la ventouse et la fréquence maximale.\n');
 fprintf(fid, '   Point d) de la consigne : la durée minimale compatible avec le FS cible est\n');
 fprintf(fid, '   la durée « ventouse » ci-dessous (T FS). La durée retenue est la plus longue\n');
-fprintf(fid, '   des trois limites.\n');
+fprintf(fid, '   des quatre limites : ventouse, couple, fréquence et énergie en fin de course\n');
+fprintf(fid, '   (fiche Festo DSR, p. 5, sans butées externes : Emax = %.4f J).\n', ...
+        P.actionneur.festo.energieMax);
 for i = 1:numel(R)
     info = infoOpt{i};
     nom  = P.materiaux(i).nom;
@@ -159,17 +161,18 @@ for i = 1:numel(R)
     else
         fprintf(fid, '   %-12s : transfert T min = %.4f s ; contrainte active : %s\n', ...
                 nom, Tmin(i), upper(info.limite));
-        fprintf(fid, '                  (ventouse %.4f s ; couple %.4f s ; fréquence %.4f s)\n', ...
-                info.Tventouse, info.Tcouple, info.Tfrequence);
+        fprintf(fid, '                  (ventouse %.4f s ; couple %.4f s ; fréquence %.4f s ; Festo %.4f s)\n', ...
+                info.Tventouse, info.Tcouple, info.Tfrequence, info.Tfesto);
     end
 end
 if isnan(TretourMin)
     fprintf(fid, '   Retour à vide : impossible ou non calculé\n');
 else
-    fprintf(fid, '   Retour à vide : T min = %.4f s ; contrainte active : COUPLE\n', TretourMin);
+    fprintf(fid, '   Retour à vide : T min = %.4f s (plus longue des limites de l''actionneur)\n', TretourMin);
 end
-fprintf(fid, '   Méthode : dichotomie sur les trois contraintes (dureeMinimale.m\n');
-fprintf(fid, '             et dureeCouple.m), précision de %g s.\n', P.recherche.tolerance);
+fprintf(fid, '   Méthode : dichotomie pour la ventouse et le couple (dureeMinimale.m et\n');
+fprintf(fid, '             dureeCouple.m, précision de %g s) ; formule directe pour la\n', P.recherche.tolerance);
+fprintf(fid, '             limite Festo (dureeFesto.m).\n');
 fprintf(fid, '   Comparaison : cycle mesuré sur la vidéo = %.2f s (%.2f pièces/min).\n\n', ...
         P.dureeCycle, 60 / P.dureeCycle);
 
@@ -201,9 +204,10 @@ fprintf(fid, '   Effort de la ventouse : Fx = m*ax ; Fy = m*(g + ay) (2e loi de 
 fprintf(fid, '   Maintien requis       : F_requis = Fy + |Fx| / mu                           -> effortVentouse.m\n');
 fprintf(fid, '   Force de maintien     : F_vide = delta_p * pi * d^2 / 4                     -> forceMaintien.m\n');
 fprintf(fid, '   Facteur de sécurité   : FS = F_vide / F_requis                              -> facteurSecurite.m\n');
-fprintf(fid, '   Durée minimale        : T_min = max(T_ventouse, T_couple, T_frequence)      -> dureeMinimale.m\n');
+fprintf(fid, '   Durée minimale        : T_min = max(T_ventouse, T_couple, T_frequence, T_festo) -> dureeMinimale.m\n');
 fprintf(fid, '     dont ventouse       : FS_min(T) = FS_cible, résolue par dichotomie        -> dureeMinimale.m\n');
 fprintf(fid, '     dont couple         : max|M(T)| = M_actionneur, résolue par dichotomie    -> dureeCouple.m\n');
+fprintf(fid, '     dont Festo          : T = Dtheta * racine(J / (2 Emax)), formule directe  -> dureeFesto.m\n');
 fprintf(fid, '       contre-verification : T = racine(6*J*Dtheta / (M_actionneur - M_gravite)) -> verifIndependante.m\n');
 fprintf(fid, '   Couple au pivot       : M = J*alpha + g*cos(theta)*(somme des m*d)          -> momentPivot.m\n\n');
 

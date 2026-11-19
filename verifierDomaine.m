@@ -27,7 +27,11 @@ function [niveau, lignes] = verifierDomaine(P, res, FScible)
 %        a) durée T plus courte que ce que l'actionneur peut réaliser ;
 %        b) couple requis au pivot plus grand que le couple de l'actionneur ;
 %        c) couple choisi plus grand que celui du catalogue : le calcul
-%           suppose alors un actionneur plus gros que le DSR-16 monté.
+%           suppose alors un actionneur plus gros que le DSR-16 monté ;
+%        d) énergie en fin de course au-delà de la limite Festo (sans
+%           butées externes), pour le transfert ET pour le retour ;
+%           rappel quand la durée Festo est extrapolée hors du graphique,
+%           ou quand le vérin doit être étranglé (moins de 180°/s).
 %
 %   [Claude] Depuis que le couple est l'entrée de l'interface (18 nov. 2026),
 %   les vérifications a) et b) ne devraient plus se déclencher en mode
@@ -84,6 +88,36 @@ if P.actionneur.verifier
         lignes{end+1} = sprintf(['Hors domaine : couple de %.2f N.m supérieur au ' ...
             'catalogue du DSR-16 (%.2f N.m à 6 bar). Le calcul suppose un ' ...
             'actionneur plus gros.'], P.actionneur.couple, P.actionneur.coupleCatalogue);
+    end
+
+    % d) Énergie en fin de course (fiche Festo DSR, p. 4 et 5)
+    % [Claude] Ajouté le 19 nov. 2026. En mode « durées de la vidéo » ou
+    % « transfert imposé », les durées peuvent être plus courtes que la
+    % limite : le message dit alors de combien l'énergie la dépasse.
+    if P.actionneur.festo.actif
+        Emax  = P.actionneur.festo.energieMax;                               % [J]
+        Etr   = energieFinCourse(P, res.masse, res.T,       P.thetaPrise, P.thetaDepot);
+        Eret  = energieFinCourse(P, 0,         res.Tretour, P.thetaDepot, P.thetaPrise);
+        marge = 1.001;          % tolérance pour l'arrondi des durées
+        if Etr > marge * Emax || Eret > marge * Emax
+            if strcmp(niveau, 'ok')
+                niveau = 'avertissement';
+            end
+            lignes{end+1} = sprintf(['Hors limite Festo : énergie en fin de course = %.1f x ' ...
+                'la limite (transfert), %.1f x (retour).'], Etr / Emax, Eret / Emax);
+            lignes{end+1} = '   Butées externes ou amortisseurs requis (fiche DSR, p. 4).';
+        else
+            [~, infoF] = dureeFesto(P, res.masse, P.thetaPrise, P.thetaDepot);
+            if infoF.extrapole
+                lignes{end+1} = sprintf(['Limite Festo extrapolée : J = %.0fe-4 kg.m^2, au-delà du ' ...
+                    'graphique (%.0fe-4).'], infoF.J * 1e4, P.actionneur.festo.Jgraphique * 1e4);
+            end
+            vitesse = abs(P.thetaDepot - P.thetaPrise) / res.T * 180 / pi;    % [deg/s]
+            if vitesse < P.actionneur.festo.vitesseEtranglement
+                lignes{end+1} = sprintf(['Vérin étranglé (%.0f deg/s < 180) : au moins 6 bar, ' ...
+                    'temps à ±30 %% (fiche DSR, p. 4).'], vitesse);
+            end
+        end
     end
 end
 

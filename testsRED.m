@@ -89,6 +89,9 @@ if strcmp(info.statut, 'ok')
             ecart = 100 * abs(res.FSmin - FS) / FS;
         case 'couple'
             ecart = 100 * abs(res.coupleMax - P.actionneur.couple) / P.actionneur.couple;
+        case 'festo'
+            Efin  = energieFinCourse(P, res.masse, Tmin, P.thetaPrise, P.thetaDepot);
+            ecart = 100 * abs(Efin - P.actionneur.festo.energieMax) / P.actionneur.festo.energieMax;
         otherwise
             ecart = 0;      % limite de fréquence : rien à serrer
     end
@@ -284,8 +287,14 @@ tab = ajouter(tab, 'C3', 'Cohérence - durée minimale la plus longue pour le pl
 %      de la nouvelle architecture : le couple est la cause, la durée
 %      l'effet. On compare deux couples pour lesquels c'est le couple, et
 %      non la ventouse, qui limite le transfert de l'acier.
+%      [Claude] Depuis le 19 nov. 2026, la limite d'énergie Festo impose
+%      environ 2,1 s à l'acier, quel que soit le couple : elle est donc
+%      désactivée ici pour isoler l'effet du couple (comme avec des butées
+%      externes).
 Pmoins = P;  Pmoins.actionneur.couple = 1.5;    % [N.m]
 Pplus  = P;  Pplus.actionneur.couple  = 2.0;    % [N.m]
+Pmoins.actionneur.festo.actif = false;
+Pplus.actionneur.festo.actif  = false;
 [Tmoins, ~] = dureeMinimale(Pmoins, iDense, FS);
 [Tplus,  ~] = dureeMinimale(Pplus,  iDense, FS);
 reussi = (Tplus < Tmoins);
@@ -294,6 +303,43 @@ tab = ajouter(tab, 'C4', ['Cohérence - un couple plus grand raccourcit la rotat
     'T min plus court avec le plus grand couple', ...
     sprintf('%.4f s (%.1f N.m) > %.4f s (%.1f N.m)', Tmoins, Pmoins.actionneur.couple, ...
             Tplus, Pplus.actionneur.couple), reussi);
+
+% F1 : la limite Festo est respectée exactement à la durée minimale.
+%      [Claude] Tests F1 à F3 ajoutés le 19 nov. 2026 avec la limite
+%      d'énergie en fin de course (fiche Festo DSR, p. 4 et 5).
+[Tf, infoF] = dureeFesto(P, massePiece(P, iDense), P.thetaPrise, P.thetaDepot);
+Ef     = energieFinCourse(P, massePiece(P, iDense), Tf, P.thetaPrise, P.thetaDepot);
+ecart  = 100 * abs(Ef - P.actionneur.festo.energieMax) / P.actionneur.festo.energieMax;
+reussi = (ecart < 1e-6);
+tab = ajouter(tab, 'F1', ['Limite - énergie en fin de course à T Festo (' nomDense ')'], ...
+    sprintf('T = T Festo ; Emax = %.4f J', P.actionneur.festo.energieMax), ...
+    'Énergie = Emax', ...
+    sprintf('T Festo = %.4f s ; E = %.5f J (%.1e %%) ; %.0f deg/s', Tf, Ef, ecart, infoF.vitesseMoy), reussi);
+
+% F2 : la règle d'énergie reproduit les points lus sur le graphique Festo.
+%      Pour chaque point (t, J) de la courbe à 180°, on recalcule le J
+%      admissible avec Emax et on le compare à la lecture. Écart permis :
+%      10 %, la lecture d'un graphique logarithmique étant approximative.
+pts   = P.actionneur.festo.pointsCourbe180;
+Jcalc = 2 * P.actionneur.festo.energieMax ./ (pi ./ pts(:, 1)).^2;      % [kg.m^2]
+ecarts = 100 * abs(Jcalc - pts(:, 2) * 1e-4) ./ (pts(:, 2) * 1e-4);      % [%]
+reussi = all(ecarts < 10);
+tab = ajouter(tab, 'F2', 'Cohérence - règle d''énergie contre graphique Festo (180°)', ...
+    sprintf('%d points lus, t de %.2f à %.2f s', size(pts, 1), pts(1, 1), pts(end, 1)), ...
+    'J recalculé à moins de 10 % de la lecture', ...
+    sprintf('écart max %.1f %%', max(ecarts)), reussi);
+
+% F3 : les durées de la vidéo dépassent la limite Festo, et le programme
+%      le signale (configuration actuelle, sans butées externes).
+resVid = calculerCycle(P, iDense, P.duree.transfert);
+[niveauVid, lignesVid] = verifierDomaine(P, resVid, FS);
+signale = any(~cellfun(@isempty, strfind(lignesVid, 'Hors limite Festo')));
+EVid    = energieFinCourse(P, massePiece(P, iDense), P.duree.transfert, P.thetaPrise, P.thetaDepot);
+reussi  = signale && strcmp(niveauVid, 'avertissement');
+tab = ajouter(tab, 'F3', ['Domaine - durées de la vidéo contre limite Festo (' nomDense ')'], ...
+    sprintf('T = %.3f s (vidéo)', P.duree.transfert), ...
+    'Avertissement « Hors limite Festo »', ...
+    sprintf('E = %.1f x Emax ; niveau : %s', EVid / P.actionneur.festo.energieMax, niveauVid), reussi);
 
 % C6 : comparaison indépendante du moment d'inertie du bras.
 %      [Claude] Test ajouté le 19 nov. 2026. Le programme utilise le J du
