@@ -90,6 +90,7 @@ S.R          = cell(1, nMat);           % résultats : S.R{i} pour le matériau 
 S.scene      = [];                      % poignées de l'animation
 S.Tmin       = NaN(1, nMat);            % [s] durée minimale du transfert, par matériau
 S.TretourMin = NaN;                     % [s] durée minimale du retour à vide
+S.limiteRetour = 'couple';              % limite qui fixe cette durée
 S.infoRetour = [];                      % informations sur le calcul du retour
 S.infoOpt    = cell(1, nMat);           % informations sur le calcul du transfert
 S.enMarche   = false;                   % vrai pendant que l'animation tourne
@@ -252,19 +253,22 @@ h.txtValeurs = uicontrol('Parent', panV, 'Style', 'text', ...
 %   T FS     : durée minimale pour que FS >= FS cible (la ventouse tient) ;
 %              c'est la valeur que demande la consigne ;
 %   T couple : durée minimale que permet le couple de l'actionneur ;
+%   T Festo  : durée minimale pour que l'énergie en fin de course reste
+%              sous la limite de la fiche Festo, sans butées externes
+%              (ajoutée le 19 nov. 2026, voir dureeFesto.m) ;
 %   T min    : la plus longue des limites, donc la durée retenue.
-% Abréviations : m = masse de la pièce ; F max = effort maximal de la
-% ventouse sur la pièce. La colonne « Poids » a été retirée pour faire de
-% la place : le poids du matériau choisi reste affiché dans les valeurs
-% clés (poids = m x g).
+% Abréviation : F max = effort maximal de la ventouse sur la pièce. Les
+% colonnes « Poids » puis « Masse » ont été retirées pour faire de la
+% place : la masse et le poids du matériau choisi restent affichés dans
+% les valeurs clés, et ceux des trois matériaux dans le fichier sauvegardé.
 h.tableau = uitable('Parent', panV, ...
     'Units', 'normalized', 'Position', [0.365 0.52 0.627 0.46], ...
-    'ColumnName', {'Matériau', 'm (g)', 'F max (N)', 'FS min', ...
-                   'T FS (s)', 'T couple', 'T min (s)'}, ...
+    'ColumnName', {'Matériau', 'F max (N)', 'FS min', ...
+                   'T FS (s)', 'T couple', 'T Festo', 'T min (s)'}, ...
     'RowName', [], ...
     'FontSize', 9, ...
     'Data', cell(numel(P.materiaux), 7));
-ajusterTableau(h.tableau, [0.17 0.11 0.155 0.115 0.14 0.155 0.155]);
+ajusterTableau(h.tableau, [0.17 0.155 0.115 0.14 0.14 0.135 0.145]);
 
 % c) Résultat de l'optimisation (texte sur plusieurs lignes)
 h.txtOptim = uicontrol('Parent', panV, 'Style', 'text', ...
@@ -448,9 +452,20 @@ S.P.actionneur.couple = couple;
 for i = 1:nMat
     [S.Tmin(i), S.infoOpt{i}] = dureeMinimale(S.P, i, S.FScible);
 end
+% Retour à vide : pas de critère de succion. Seules les limites de
+% l'actionneur comptent : couple, fréquence et, depuis le 19 nov. 2026,
+% l'énergie en fin de course (fiche Festo, sans butées externes).
 [S.TretourMin, S.infoRetour] = dureeCouple(S.P, 0, S.P.thetaDepot, S.P.thetaPrise);
+S.limiteRetour = 'couple';
 if S.P.actionneur.verifier && ~isnan(S.TretourMin)
-    S.TretourMin = max(S.TretourMin, S.P.actionneur.dureeMin);
+    candidats = [S.TretourMin, S.P.actionneur.dureeMin];
+    noms      = {'couple', 'frequence'};
+    if S.P.actionneur.festo.actif
+        candidats(end+1) = dureeFesto(S.P, 0, S.P.thetaDepot, S.P.thetaPrise);
+        noms{end+1}      = 'festo';
+    end
+    [S.TretourMin, k] = max(candidats);
+    S.limiteRetour    = noms{k};
 end
 
 % --- 4. Durées réellement utilisées pour le cycle -----------------------------------------
@@ -650,23 +665,22 @@ nMat    = numel(S.P.materiaux);
 donnees = cell(nMat, 7);                % tableau de cellules (texte)
 
 for i = 1:nMat
-    m    = massePiece(S.P, i);          % la masse ne dépend pas du couple
     info = S.infoOpt{i};
     donnees{i, 1} = S.P.materiaux(i).nom;
-    donnees{i, 2} = sprintf('%.1f', m * 1000);
 
     if isempty(S.R{i})
         % Couple insuffisant pour ce matériau : aucun cycle possible
+        donnees{i, 2} = '-';
         donnees{i, 3} = '-';
-        donnees{i, 4} = '-';
     else
-        donnees{i, 3} = sprintf('%.3f', S.R{i}.FnormeMax);
-        donnees{i, 4} = sprintf('%.2f', S.R{i}.FSmin);
+        donnees{i, 2} = sprintf('%.3f', S.R{i}.FnormeMax);
+        donnees{i, 3} = sprintf('%.2f', S.R{i}.FSmin);
     end
 
-    % Les trois durées minimales du transfert (voir construireInterface).
-    donnees{i, 5} = texteDuree(info.Tventouse);
-    donnees{i, 6} = texteDuree(info.Tcouple);
+    % Les durées minimales du transfert (voir construireInterface).
+    donnees{i, 4} = texteDuree(info.Tventouse);
+    donnees{i, 5} = texteDuree(info.Tcouple);
+    donnees{i, 6} = texteDuree(info.Tfesto);
 
     % En mode vidéo, le cycle est calculé avec les durées mesurées même si
     % le couple choisi ne permettrait pas de les atteindre : la durée
@@ -708,15 +722,15 @@ if S.modeDurees == 1
     lignes{end+1} = 'Transfert minimal (étape 4) :';
     lignes{end+1} = sprintf('   selon la ventouse (FS >= %.2f) : %s s', S.FScible, ...
                             texteDuree(info.Tventouse));
-    lignes{end+1} = sprintf('   selon le couple (%.2f N.m) : %s s', P.actionneur.couple, ...
-                            texteDuree(info.Tcouple));
+    lignes{end+1} = sprintf('   selon l''actionneur : couple %s s ; énergie Festo %s s', ...
+                            texteDuree(info.Tcouple), texteDuree(info.Tfesto));
     lignes{end+1} = sprintf('   RETENU : %.3f s (limite : %s, arrondi au ms supérieur)', ...
                             res.T, upper(info.limite));
 
     % Étape 2 : le retour à vide. Sans rondelle, aucun critère de succion :
     % seul l'actionneur limite cette rotation.
-    lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s (limite : COUPLE, sans rondelle)', ...
-                            res.Tretour);
+    lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s (limite : %s, sans rondelle)', ...
+                            res.Tretour, upper(S.limiteRetour));
 
     % Le cycle complet, comparé au montage actuel
     lignes{end+1} = sprintf('Cycle : %.2f s (%.2f pièces/min) ; vidéo : %.2f s (%.2f)', ...
@@ -731,15 +745,16 @@ else
     end
 
     lignes{end+1} = sprintf('Transfert (étape 4) : %.3f s', res.T);
-    lignes{end+1} = sprintf('   min. ventouse (FS >= %.2f) : %s s | min. couple : %s s', ...
-                            S.FScible, texteDuree(info.Tventouse), texteDuree(info.Tcouple));
+    lignes{end+1} = sprintf('   minimums : ventouse %s | couple %s | Festo %s s', ...
+                            texteDuree(info.Tventouse), texteDuree(info.Tcouple), ...
+                            texteDuree(info.Tfesto));
 
     lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s', res.Tretour);
     if isnan(S.TretourMin)
         lignes{end+1} = sprintf('   minimum à %.2f N.m : impossible (couple insuffisant)', ...
                                 P.actionneur.couple);
     else
-        lignes{end+1} = sprintf('   minimum à %.2f N.m : %.3f s', P.actionneur.couple, S.TretourMin);
+        lignes{end+1} = sprintf('   minimum : %.3f s (limite : %s)', S.TretourMin, upper(S.limiteRetour));
     end
 
     lignes{end+1} = sprintf('Cycle : %.2f s, soit %.2f pièces/min', ...

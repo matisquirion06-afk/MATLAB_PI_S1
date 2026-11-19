@@ -16,6 +16,8 @@ function [Tmin, info] = dureeMinimale(P, iMat, FScible)
 %       info.limite       'ventouse'   c'est la succion qui limite
 %                         'couple'     c'est l'actionneur qui limite
 %                         'frequence'  c'est la fréquence maximale qui limite
+%                         'festo'      c'est l'énergie admissible en fin de
+%                                      course (fiche Festo) qui limite
 %                         'aucune'     aucune contrainte n'est active
 %       info.message      explication en français
 %       info.iterations   nombre d'essais effectués (ventouse + couple)
@@ -24,13 +26,17 @@ function [Tmin, info] = dureeMinimale(P, iMat, FScible)
 %       info.Tventouse    durée minimale imposée par la ventouse [s]
 %       info.Tcouple      durée minimale imposée par l'actionneur [s]
 %       info.Tfrequence   durée minimale imposée par la fréquence max [s]
+%       info.Tfesto       durée minimale imposée par l'énergie en fin de
+%                         course, sans butées externes [s] (NaN si la
+%                         limite est désactivée)
+%       info.festo        détails de cette limite (voir dureeFesto.m)
 %
-%   LES TROIS CONTRAINTES
+%   LES QUATRE CONTRAINTES
 %     Le transfert doit satisfaire TOUTES les limites physiques à la fois.
 %     Chacune impose sa propre durée minimale, et c'est la PLUS GRANDE des
-%     trois qui gouverne :
+%     quatre qui gouverne :
 %
-%       Tmin = max( T_ventouse , T_couple , T_frequence )
+%       Tmin = max( T_ventouse , T_couple , T_frequence , T_festo )
 %
 %     1. VENTOUSE (calculée ici)
 %        Plus le transfert est rapide, plus les accélérations sont grandes,
@@ -43,8 +49,13 @@ function [Tmin, info] = dureeMinimale(P, iMat, FScible)
 %        pas fournir plus que P.actionneur.couple.
 %
 %     3. ACTIONNEUR : FRÉQUENCE (simple lecture de P.actionneur.dureeMin)
-%        Une rotation ne peut pas durer moins d'une demi-période de la
-%        fréquence maximale de l'actionneur.
+%        Une rotation ne peut pas durer moins que 1/f (3 pivotements par
+%        seconde au plus, interprétation prudente de la fiche Festo).
+%
+%     4. ACTIONNEUR : ÉNERGIE EN FIN DE COURSE (calculée par dureeFesto.m)
+%        [Claude] Ajoutée le 19 nov. 2026. Sans butées externes, les
+%        tampons du vérin ne peuvent absorber qu'environ 0,011 J (fiche
+%        Festo, p. 5). Active si P.actionneur.festo.actif = true.
 %
 %   LA MÉTHODE : RECHERCHE PAR DICHOTOMIE (ou bissection)
 %     C'est le jeu « plus grand / plus petit » :
@@ -75,6 +86,8 @@ info.iterations = 0;        % Le nombre d'itération est réinitialisé
 info.FSobtenu   = NaN;      % Aucun facteur de sécurité minimal pour l'instant
 info.Tcouple    = NaN;
 info.Tfrequence = NaN;
+info.Tfesto     = NaN;
+info.festo      = [];
 
 %% --- 1. Cas sans solution : la prise n'est pas sûre même à l'arrêt ---------
 % Bras immobile, la force requise est le poids m*g. Si le facteur de
@@ -153,6 +166,14 @@ if P.actionneur.verifier
 
     info.Tcouple    = Tcouple;
     info.Tfrequence = P.actionneur.dureeMin;
+
+    % Contrainte 4 : énergie en fin de course (sans butées externes)
+    if P.actionneur.festo.actif
+        [Tfesto, info.festo] = dureeFesto(P, m, P.thetaPrise, P.thetaDepot);
+        info.Tfesto = Tfesto;
+    else
+        Tfesto = 0;
+    end
 else
     Tcouple    = 0;
     info.Tcouple    = NaN;
@@ -164,8 +185,8 @@ end
 % toutes les contraintes à la fois.
 
 if P.actionneur.verifier
-    candidats = [Tventouse, Tcouple, P.actionneur.dureeMin];
-    noms      = {'ventouse', 'couple', 'frequence'};
+    candidats = [Tventouse, Tcouple, P.actionneur.dureeMin, Tfesto];
+    noms      = {'ventouse', 'couple', 'frequence', 'festo'};
 else
     candidats = Tventouse;
     noms      = {'ventouse'};
@@ -193,6 +214,10 @@ switch info.limite
     case 'frequence'
         info.message = sprintf(['Durée limitée par la FRÉQUENCE maximale de ' ...
             'l''actionneur (%.3f s).'], P.actionneur.dureeMin);
+    case 'festo'
+        info.message = sprintf(['Durée limitée par l''ÉNERGIE admissible en fin ' ...
+            'de course, sans butées externes (%.3f s). Le couple permettrait ' ...
+            '%.3f s et la ventouse %.3f s.'], Tfesto, Tcouple, Tventouse);
     otherwise
         info.message = 'Aucune contrainte n''est active sur cette durée.';
 end
