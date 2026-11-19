@@ -145,8 +145,7 @@ else
     alphaC = (thc(c+1) - 2*thc(c) + thc(c-1)) / dtc^2;      % [rad/s^2]
 
     masseAuBout = P.masseVentouse + masse;                  % [kg]
-    Jind = P.bras.masse * (P.bras.longueur^2 / 12 + P.bras.distCM^2) ...
-         + masseAuBout * P.L^2;                             % [kg.m^2]
+    Jind = P.bras.Jpivot + masseAuBout * P.L^2;             % [kg.m^2]
     Mgrav = P.g * cos(thc(c)) * (P.bras.masse * P.bras.distCM ...
           + masseAuBout * P.L);                             % [N.m]
 
@@ -188,8 +187,7 @@ if isnan(Tcouple)
     Tcouple_ind = NaN;
 else
     masseBout = P.masseVentouse + masse;                    % [kg]
-    Jdirect = P.bras.masse * (P.bras.longueur^2 / 12 + P.bras.distCM^2) ...
-            + masseBout * P.L^2;                            % [kg.m^2]
+    Jdirect = P.bras.Jpivot + masseBout * P.L^2;            % [kg.m^2]
 
     % Couple de gravité à l'angle d'arrivée (le plus défavorable des deux
     % extrémités : c'est celle dont |cos(theta)| est le plus grand).

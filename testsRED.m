@@ -295,6 +295,28 @@ tab = ajouter(tab, 'C4', ['Cohérence - un couple plus grand raccourcit la rotat
     sprintf('%.4f s (%.1f N.m) > %.4f s (%.1f N.m)', Tmoins, Pmoins.actionneur.couple, ...
             Tplus, Pplus.actionneur.couple), reussi);
 
+% C6 : comparaison indépendante du moment d'inertie du bras.
+%      [Claude] Test ajouté le 19 nov. 2026. Le programme utilise le J du
+%      bras mesuré dans SolidWorks, pièce par pièce. On le compare à
+%      l'ancien modèle, calculé à la main sans SolidWorks : une barre
+%      uniforme de 200 mm, de 0,311 kg (masse de l'assemblage MPS-12-000),
+%      avec le centre de masse à 88,5 mm du pivot :
+%          J_barre = m * (l^2/12 + d^2)
+%      Les deux méthodes sont indépendantes ; on s'attend à un accord de
+%      quelques pour cent, la forme réelle n'étant pas une barre parfaite.
+mA     = P.bras.ancienModele.masse;
+dA     = P.bras.ancienModele.distCM;
+Jbarre = mA * (P.bras.longueur^2 / 12 + dA^2);                  % [kg.m^2]
+ecartJ = 100 * (P.bras.Jpivot - Jbarre) / Jbarre;               % [%]
+ecartM = 100 * (P.bras.masse  - mA)     / mA;                   % [%]
+reussi = abs(ecartJ) < 5;
+tab = ajouter(tab, 'C6', 'Cohérence - J du bras : SolidWorks contre barre uniforme', ...
+    sprintf('J SolidWorks ; barre %.0f mm, %.3f kg, d = %.1f mm', ...
+            1000 * P.bras.longueur, mA, 1000 * dA), ...
+    'Écart sur J < 5 %', ...
+    sprintf('J = %.3e contre %.3e kg.m^2 (%+.1f %%) ; masse %+.1f %%', ...
+            P.bras.Jpivot, Jbarre, ecartJ, ecartM), reussi);
+
 
 % =====================================================================================
 %  AFFICHAGE DE LA MATRICE DE TESTS

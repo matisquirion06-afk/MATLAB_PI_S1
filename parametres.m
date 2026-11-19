@@ -281,21 +281,44 @@ P.actionneur.couple = P.actionneur.coupleCatalogue;     % [N.m]
 P.actionneur.dureeMin = 1 / (2 * P.actionneur.frequenceMax);   % [s]
 
 % Bras + pont (pièces MPS-12-005 et MPS-12-002).
-% [Fourni] Masse : propriété « Mass » de l'assemblage MPS-12-000 dans le
-% CAD (0,686 lb = 0,311 kg). Longueur : CAD MPS-12-005 (200 mm).
-% [Claude] Position du centre de masse : on suppose une barre uniforme de
-% 200 mm dont le pivot est à 11,5 mm d'un bout, donc un centre de masse à
-% 100 - 11,5 = 88,5 mm du pivot.
-% Statut : PROVISOIRE, retenu par l'équipe le 18 nov. 2026 en attendant
-% les « Propriétés de masse » de SolidWorks par rapport à l'axe du pivot.
-% Vérification partielle (Matis, 18 nov. 2026) : l'assemblage MPS-12
-% entier (bras + ensemble ventouse, repère par défaut) donne 0,842 lb =
-% 0,382 kg et Lyy = 5,207 lb.po^2 = 1,524e-3 kg.m^2 au centre de gravité.
-% Le modèle (0,311 + 0,076 kg, barre uniforme) donne 0,387 kg (-1,3 %) et
-% 1,515e-3 kg.m^2 (+0,6 %). Les 0,311 kg ne contiennent donc PAS le vérin.
-P.bras.masse    = 0.311;    % [kg]
+% [Fourni] SolidWorks, « Propriétés de masse » de chaque pièce, mesurées
+% par Matis le 19 nov. 2026 (acier, 0,284 lb/po^3, unités livres et
+% pouces). Pour chaque pièce :
+%   m    = masse ;
+%   Lyy  = moment d'inertie au centre de gravité, autour de l'axe Y du
+%          repère par défaut, perpendiculaire à la grande face de la pièce,
+%          donc parallèle à l'axe du pivot ;
+%   d    = distance entre le point « Centre de masse » et l'axe du pivot
+%          (outil Mesurer ; pivot = trou de l'Axe1, au bout du bras).
+%
+%   Pièce        m (lb)   Lyy (lb.po^2)   d (po)
+%   MPS-12-002   0,278    1,704           3,428
+%   MPS-12-005   0,402    1,851           3,492
+%
+% Le moment d'inertie de chaque pièce autour du pivot vient du théorème
+% des axes parallèles : J = Lyy + m*d^2. Le bras est la somme des deux.
+% Ces valeurs REMPLACENT l'hypothèse d'une barre uniforme de 200 mm
+% (0,311 kg, centre de masse à 88,5 mm), qui donnait J = 3,47e-3 kg.m^2 :
+% l'écart est de -1,2 % sur J (test C6 de testsRED.m).
+% Statut : CONFIRMÉ (CAD, mesure de l'équipe).
+lb = 0.45359237;            % [kg] une livre
+po = 0.0254;                % [m]  un pouce
+m002 = 0.278 * lb;   Lyy002 = 1.704 * lb * po^2;   d002 = 3.428 * po;
+m005 = 0.402 * lb;   Lyy005 = 1.851 * lb * po^2;   d005 = 3.492 * po;
+
+P.bras.masse  = m002 + m005;                                   % [kg]  0,308 kg
+P.bras.distCM = (m002 * d002 + m005 * d005) / P.bras.masse;    % [m]   88,0 mm
+P.bras.Jpivot = (Lyy002 + m002 * d002^2) + (Lyy005 + m005 * d005^2);   % [kg.m^2] 3,43e-3
+
+% Longueur du bras : [Fourni] CAD MPS-12-005 (200 mm). Ne sert plus au
+% calcul de J ; elle sert seulement au test C6 (comparaison avec l'ancien
+% modèle de barre uniforme).
 P.bras.longueur = 0.200;    % [m]
-P.bras.distCM   = 0.0885;   % [m] distance pivot -> centre de masse
+
+% Ancienne hypothèse, gardée pour la comparaison du test C6 :
+% masse de l'assemblage MPS-12-000 (0,686 lb) et barre uniforme.
+P.bras.ancienModele.masse  = 0.311;    % [kg]
+P.bras.ancienModele.distCM = 0.0885;   % [m]
 
 % Ensemble ventouse (support en laiton, poulie, adaptateur, ventouse).
 % [Fourni] Propriété « Mass » de l'assemblage MPS-12-200 dans le CAD
