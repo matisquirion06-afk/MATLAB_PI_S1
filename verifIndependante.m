@@ -26,7 +26,7 @@ function V = verifIndependante(P, iMat, T, FScible, afficher)
 %
 %   EN QUOI CE CALCUL EST-IL INDÉPENDANT ?
 %     Le programme principal obtient l'accélération par DÉRIVATION
-%     ANALYTIQUE (formules de loiMouvement.m et de cinematiquePiece.m).
+%     ANALYTIQUE (formules de DeplacementAngulaire.m et de cinematiquePiece.m).
 %     Ici, on n'utilise AUCUNE de ces formules de vitesse ou d'accélération :
 %       1. on calcule seulement la POSITION de la pièce à des instants
 %          très rapprochés ;

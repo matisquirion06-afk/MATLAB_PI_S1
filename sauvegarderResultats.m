@@ -75,11 +75,11 @@ else
 end
 switch modeDurees
     case 1
-        origineDurees = 'calculées à ce couple (vitesse maximale)';
+        origineDurees = 'la plus rapide permise (durées minimales calculées)';
     case 2
-        origineDurees = 'mesurées sur la vidéo';
+        origineDurees = 'comme la machine actuelle (durées de la vidéo)';
     otherwise
-        origineDurees = 'transfert imposé par l''utilisateur, retour mesuré sur la vidéo';
+        origineDurees = 'transfert choisi par l''utilisateur, retour de la vidéo';
 end
 
 fprintf(fid, '1. ENTRÉES CHOISIES DANS L''INTERFACE\n');
@@ -87,6 +87,11 @@ fprintf(fid, '   Matériau de la pièce        : %s\n', res.nomMateriau);
 fprintf(fid, '   Couple de l''actionneur      : %.3f N.m (%s)\n', P.actionneur.couple, origineCouple);
 fprintf(fid, '   Facteur de sécurité cible   : %.2f\n', FScible);
 fprintf(fid, '   Durées des rotations        : %s\n', origineDurees);
+if P.actionneur.festo.actif
+    fprintf(fid, '   Amortisseurs                : non (montage actuel) ; limite Festo appliquée\n');
+else
+    fprintf(fid, '   Amortisseurs                : OUI (simulation) ; limite Festo non appliquée\n');
+end
 fprintf(fid, '   Loi de mouvement            : polynomiale cubique (degre 3)\n\n');
 
 fprintf(fid, '   DURÉES QUI EN DÉCOULENT (résultats, pas des entrées)\n');
