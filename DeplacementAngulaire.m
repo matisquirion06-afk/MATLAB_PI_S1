@@ -10,7 +10,7 @@
 
 %   ENTRÉES
 %     t        temps écoulé depuis le début de la rotation [s]
-%     temps_f  temps final du cycle [s]
+%     temps_f  durée de la rotation [s]
 %     theta_i  angle de départ [rad]
 %     theta_f  angle d'arrivée [rad]
 %

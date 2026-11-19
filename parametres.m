@@ -38,7 +38,7 @@ function P = parametres()
 P.g = 9.81;     % [m/s^2] accélération gravitationnelle (valeur usuelle)
 
 %% ------------------------------------------------------------------------
-%  2. GÉOMÉTRIE DU BRAS (vue de côté, voir le schéma dans anglesExtremes.m)
+%  2. GÉOMÉTRIE DU BRAS (vue de côté ; angles calculés avec hauteurAxePoulie.m)
 % -------------------------------------------------------------------------
 
 % Distance entre le pivot du bras et l'axe de la poulie qui porte la ventouse.
