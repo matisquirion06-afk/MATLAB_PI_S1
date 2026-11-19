@@ -1,5 +1,5 @@
 function FS = facteurSecurite(Fvide, Frequis)
-% FACTEURSECURITE  Facteur de sécurité de la prise à chaque instant.                   EST CE QUE C'EST RÉELLEMENT UN FACTEUR DE SÉCURITÉ OU C'EST PLUS LE FAIT DE SAVOIR SI CA GLISSE?
+% FACTEURSECURITE  Facteur de sécurité de la prise à chaque instant.
 %
 %   FS = facteurSecurite(Fvide, Frequis)
 %
@@ -13,6 +13,12 @@ function FS = facteurSecurite(Fvide, Frequis)
 %
 %   ÉQUATION
 %     FS = Fvide / Frequis
+%
+%   GLISSEMENT OU ARRACHEMENT ?
+%     Les deux. Frequis (effortVentouse.m) contient déjà le glissement :
+%     Frequis = Fy + |Fx| / mu. Un seul FS couvre donc l'arrachement
+%     vertical et le glissement horizontal. C'est un facteur de sécurité
+%     au sens usuel : capacité divisée par demande.
 %
 %   COMMENT LIRE LE RÉSULTAT
 %     FS > 1 : la ventouse peut fournir plus que la force requise.
