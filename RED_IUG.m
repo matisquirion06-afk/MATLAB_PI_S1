@@ -13,28 +13,32 @@ function RED_IUG()
 %        le facteur de sécurité de la prise.
 %     c) Elle permet de changer de matériau et compare les trois matériaux
 %        dans un tableau.
-%     d) Elle calcule la durée de chaque rotation à partir du COUPLE de
-%        l'actionneur : la durée est un résultat, pas une entrée. C'est la
-%        plus courte qui respecte à la fois le couple disponible et le
-%        facteur de sécurité cible.
+%     d) Elle calcule la durée minimale de chaque rotation : la plus courte
+%        qui respecte la ventouse (facteur de sécurité exigé), le couple et
+%        la fréquence du vérin, et l'énergie admissible en fin de course
+%        (fiche Festo). La durée minimale selon le FS seul est affichée à
+%        part (résumé et « Détails techniques »).
 %     Elle refuse les entrées invalides, signale les résultats hors du
 %     domaine de validité et sauvegarde les résultats dans un fichier texte.
 %
-%   LES ENTRÉES (colonne de gauche)
-%     - le matériau de la pièce ;
-%     - le couple de l'actionneur, 2,00 N.m par défaut (catalogue Festo) ;
-%     - le facteur de sécurité cible ;
-%     - l'origine des durées des rotations :
-%         « calculée à ce couple »  : la plus courte possible (par défaut) ;
-%         « mesurée sur la vidéo »  : le montage réel, ralenti par ses
-%                                     limiteurs de débit ;
-%         « imposée »               : l'utilisateur tape la durée du
-%                                     transfert (case dédiée).
-%     [Claude] Avant le 18 nov. 2026, la durée du transfert se tapait dans
-%     une case et un bouton « Optimiser » calculait la durée minimale. On a
-%     inversé la relation : le couple est la variable indépendante, la
-%     durée en découle. Le calcul de la durée minimale est donc permanent.
+%   À QUI ELLE S'ADRESSE
+%     [Claude] Depuis le 19 nov. 2026, l'interface vise les utilisateurs du
+%     Consortium des mini-usines de l'Estrie : notions de génie mécanique,
+%     mais pas ingénieurs. L'écran principal parle en mots simples ; tous
+%     les détails techniques restent dans la fenêtre « Détails techniques ».
 %
+%   LES RÉGLAGES (colonne de gauche)
+%     1. La rondelle (Delrin, aluminium, acier).
+%     2. La vitesse du bras :
+%          « la plus rapide permise »  : durée minimale calculée (par défaut) ;
+%          « comme la machine actuelle » : durées mesurées sur la vidéo ;
+%          « je choisis la durée »     : l'utilisateur tape la durée du
+%                                        transfert (case qui apparaît).
+%     3. L'équipement : « ajouter des amortisseurs » retire la limite
+%        d'énergie en fin de course (simulation : la machine n'en a pas).
+%     Réglages avancés (cachés par défaut) : couple du vérin (2,00 N.m,
+%     catalogue Festo) et facteur de sécurité exigé (2,0, choix de l'équipe).
+
 %   COMMENT CE FICHIER EST ORGANISÉ
 %     Ce fichier ne contient AUCUNE équation de physique. Il s'occupe
 %     seulement de l'affichage et des boutons. Tous les calculs sont faits
@@ -45,7 +49,7 @@ function RED_IUG()
 %       A. Construction de la fenêtre      (construireInterface, ...)
 %       B. Calcul et affichage             (mettreAJour, afficher...)
 %       C. Animation                       (lancerAnimation, ...)
-%       D. Autres boutons                  (retablirCouple, sauvegarder, ...)
+%       D. Autres boutons                  (sauvegarder, montrerDetails, montrerAide, ...)
 %
 %   TROIS NOTIONS UTILES POUR LIRE CE FICHIER
 %     1. POIGNÉE (handle) : référence vers un objet graphique (bouton,
@@ -91,6 +95,7 @@ S.scene      = [];                      % poignées de l'animation
 S.Tmin       = NaN(1, nMat);            % [s] durée minimale du transfert, par matériau
 S.TretourMin = NaN;                     % [s] durée minimale du retour à vide
 S.limiteRetour = 'couple';              % limite qui fixe cette durée
+S.lignesDomaine = {};                   % jugement complet (verifierDomaine.m)
 S.infoRetour = [];                      % informations sur le calcul du retour
 S.infoOpt    = cell(1, nMat);           % informations sur le calcul du transfert
 S.enMarche   = false;                   % vrai pendant que l'animation tourne
@@ -115,117 +120,157 @@ end
 function h = construireInterface(fig, S)
 % CONSTRUIREINTERFACE  Crée tous les objets de la fenêtre et retourne leurs poignées.
 %   La fenêtre est divisée en trois colonnes :
-%     gauche  : panneau de commandes
-%     centre  : animation, message d'état, valeurs clés et tableau comparatif
+%     gauche  : réglages (en trois étapes), animation, valeurs à l'instant
+%     centre  : animation, message d'état en langage simple, résumé des
+%               résultats et comparaison des rondelles
 %     droite  : les cinq tracés en fonction du temps
+%
+%   [Claude] Interface simplifiée le 19 nov. 2026 pour le Consortium des
+%   mini-usines de l'Estrie (utilisateurs avec des notions de génie
+%   mécanique, mais pas ingénieurs) :
+%     - les réglages sont regroupés en trois étapes numérotées ;
+%     - le couple et le facteur de sécurité sont des « réglages avancés »,
+%       cachés par défaut (ils gardent les valeurs justifiées par l'équipe) ;
+%     - les résultats sont résumés en phrases, avec la cause de chaque
+%       limite en mots simples ;
+%     - tous les détails techniques (durées par contrainte, efforts,
+%       couples, avertissements complets, hypothèses, tests) restent
+%       accessibles par le bouton « Détails techniques » ;
+%     - une bulle d'aide apparaît sur chaque commande, et le bouton
+%       « Aide » ouvre un mode d'emploi.
 
 P    = S.P;
 fond = [0.94 0.94 0.94];                % couleur de fond (gris pâle)
 
 % ---------------------------------------------------------------------------------
-%  COLONNE DE GAUCHE : PANNEAU DE COMMANDES
+%  COLONNE DE GAUCHE : RÉGLAGES
 % ---------------------------------------------------------------------------------
-% Dans un panneau, les positions sont des fractions DU PANNEAU.
-pan = uipanel('Parent', fig, 'Title', 'Commandes', 'FontWeight', 'bold', ...
+% Dans un panneau, les positions sont des fractions DU PANNEAU. Les
+% positions verticales sont calculées par placerCommandes : certaines
+% lignes n'apparaissent que dans certains cas (durée choisie, réglages
+% avancés), et les lignes suivantes remontent alors pour combler le vide.
+pan = uipanel('Parent', fig, 'Title', 'Réglages', 'FontWeight', 'bold', ...
               'BackgroundColor', fond, ...
               'Units', 'normalized', 'Position', [0.006 0.015 0.208 0.975]);
+h.panReglages = pan;
 
-% --- Choix du matériau (menu déroulant) ---
-etiquette(pan, [0.05 0.955 0.90 0.026], 'Matériau de la pièce', false);
+% --- Étape 1 : la rondelle ---
+h.lblMat = etiquette(pan, [0 0 0.90 0.028], '1. Rondelle à déplacer', true);
+nomsMenu = cell(1, numel(P.materiaux));
+for i = 1:numel(P.materiaux)
+    nomsMenu{i} = sprintf('%s (%.0f g)', P.materiaux(i).nom, 1000 * massePiece(P, i));
+end
 h.popMateriau = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
-    'Units', 'normalized', 'Position', [0.05 0.917 0.90 0.038], ...
-    'String', {P.materiaux.nom}, 'Value', S.iMat, ...
+    'Units', 'normalized', 'Position', [0.05 0 0.90 0.038], ...
+    'String', nomsMenu, 'Value', S.iMat, ...
+    'TooltipString', 'Matériau de la rondelle transportée par le bras.', ...
     'Callback', @(~, ~) mettreAJour(fig));
 
-% --- Couple de l'actionneur (case à remplir) : l'ENTRÉE principale ---
-% La durée des rotations n'est plus tapée : elle découle de ce couple.
-etiquette(pan, [0.05 0.874 0.63 0.028], 'Couple de l''actionneur (N.m)', false);
-h.editCouple = uicontrol('Parent', pan, 'Style', 'edit', ...
-    'Units', 'normalized', 'Position', [0.69 0.872 0.26 0.038], ...
-    'String', sprintf('%.2f', P.actionneur.couple), 'BackgroundColor', [1 1 1], ...
-    'Callback', @(~, ~) mettreAJour(fig));
-
-% --- Facteur de sécurité cible (case à remplir) ---
-etiquette(pan, [0.05 0.829 0.63 0.028], 'Facteur de sécurité cible', false);
-h.editFS = uicontrol('Parent', pan, 'Style', 'edit', ...
-    'Units', 'normalized', 'Position', [0.69 0.827 0.26 0.038], ...
-    'String', sprintf('%.2f', S.FScible), 'BackgroundColor', [1 1 1], ...
-    'Callback', @(~, ~) mettreAJour(fig));
-
-% --- D'où viennent les durées des rotations (menu déroulant) ---
-% 1. Calculée : la plus courte que permettent le couple et la ventouse.
-% 2. Vidéo    : les durées mesurées sur le montage réel, qui est ralenti
-%               par ses limiteurs de débit. Sert à comparer au montage.
-% 3. Imposée  : l'utilisateur tape la durée du transfert dans la case
-%               ci-dessous (le retour à vide garde sa durée mesurée).
-etiquette(pan, [0.05 0.789 0.90 0.026], 'Durée des rotations', false);
+% --- Étape 2 : la vitesse des rotations ---
+% 1. La plus rapide permise : la plus courte durée qui respecte toutes
+%    les limites (ventouse, couple, fréquence, chocs en fin de course).
+% 2. Machine actuelle : les durées mesurées sur la vidéo.
+% 3. Durée choisie : l'utilisateur tape la durée du transfert (le retour
+%    à vide garde sa durée mesurée).
+h.lblMode = etiquette(pan, [0 0 0.90 0.028], '2. Vitesse du bras', true);
 h.popMode = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
-    'Units', 'normalized', 'Position', [0.05 0.751 0.90 0.038], ...
-    'String', {'Calculée à ce couple (vitesse maximale)', ...
-               sprintf('Mesurée sur la vidéo (%.3f s et %.3f s)', ...
-                       P.duree.transfert, P.duree.retour), ...
-               'Imposée par l''utilisateur (case ci-dessous)'}, ...
+    'Units', 'normalized', 'Position', [0.05 0 0.90 0.038], ...
+    'String', {'La plus rapide permise (recommandé)', ...
+               'Comme la machine actuelle (vidéo)', ...
+               'Je choisis la durée du transfert'}, ...
     'Value', S.modeDurees, ...
+    'TooltipString', ['Le programme peut chercher la vitesse maximale permise, ' ...
+                      'reproduire la machine actuelle, ou utiliser votre durée.'], ...
     'Callback', @(~, ~) mettreAJour(fig));
 
-% --- Durée du transfert imposée (active seulement en mode 3) ---
-etiquette(pan, [0.05 0.710 0.63 0.028], 'Durée du transfert imposée (s)', false);
+h.lblT = etiquette(pan, [0 0 0.62 0.028], 'Durée du transfert (s)', false);
 h.editT = uicontrol('Parent', pan, 'Style', 'edit', ...
-    'Units', 'normalized', 'Position', [0.69 0.708 0.26 0.038], ...
+    'Units', 'normalized', 'Position', [0.69 0 0.26 0.038], ...
     'String', sprintf('%.3f', P.duree.transfert), 'BackgroundColor', [1 1 1], ...
-    'Enable', 'off', ...
+    'TooltipString', 'Durée de la rotation avec la rondelle, en secondes (ex. 1,5).', ...
     'Callback', @(~, ~) mettreAJour(fig));
 
-bouton(pan, [0.05 0.662 0.90 0.038], ...
-       sprintf('Couple du catalogue Festo (%.2f N.m)', P.actionneur.coupleCatalogue), ...
-       @(~, ~) retablirCouple(fig));
+% --- Étape 3 : l'équipement ---
+h.lblEquip = etiquette(pan, [0 0 0.90 0.028], '3. Équipement', true);
+h.caseAmort = uicontrol('Parent', pan, 'Style', 'checkbox', ...
+    'Units', 'normalized', 'Position', [0.05 0 0.90 0.034], ...
+    'String', 'Ajouter des amortisseurs (simulation)', 'Value', ~P.actionneur.festo.actif, ...
+    'BackgroundColor', fond, ...
+    'TooltipString', ['La machine actuelle n''a pas d''amortisseurs : le fabricant limite alors ' ...
+                      'la vitesse pour éviter les chocs en fin de course. Cochez pour voir ' ...
+                      'ce que permettraient des amortisseurs ou des butées externes.'], ...
+    'Callback', @(~, ~) mettreAJour(fig));
+
+h.caseAvance = uicontrol('Parent', pan, 'Style', 'checkbox', ...
+    'Units', 'normalized', 'Position', [0.05 0 0.90 0.034], ...
+    'String', 'Afficher les réglages avancés', 'Value', 0, ...
+    'BackgroundColor', fond, ...
+    'TooltipString', 'Couple du vérin et marge de sécurité exigée.', ...
+    'Callback', @(~, ~) basculerAvance(fig));
+
+% Réglages avancés (cachés par défaut)
+h.lblCouple = etiquette(pan, [0 0 0.62 0.028], 'Couple du vérin (N.m)', false);
+h.editCouple = uicontrol('Parent', pan, 'Style', 'edit', ...
+    'Units', 'normalized', 'Position', [0.69 0 0.26 0.038], ...
+    'String', sprintf('%.2f', P.actionneur.couple), 'BackgroundColor', [1 1 1], ...
+    'TooltipString', sprintf(['Force de rotation du vérin. Vérin actuel (Festo DSR-16) : ' ...
+                              '%.2f N.m à 6 bar.'], P.actionneur.coupleCatalogue), ...
+    'Callback', @(~, ~) mettreAJour(fig));
+
+h.lblFS = etiquette(pan, [0 0 0.62 0.028], 'Marge de sécurité exigée', false);
+h.editFS = uicontrol('Parent', pan, 'Style', 'edit', ...
+    'Units', 'normalized', 'Position', [0.69 0 0.26 0.038], ...
+    'String', sprintf('%.2f', S.FScible), 'BackgroundColor', [1 1 1], ...
+    'TooltipString', ['Facteur de sécurité (FS) de la prise : 2 veut dire que la ventouse ' ...
+                      'doit pouvoir tenir deux fois l''effort nécessaire.'], ...
+    'Callback', @(~, ~) mettreAJour(fig));
+
+h.btnDefaut = bouton(pan, [0.05 0 0.90 0.038], 'Remettre les valeurs par défaut', ...
+                     @(~, ~) valeursParDefaut(fig));
 
 % --- Animation ---
-etiquette(pan, [0.05 0.620 0.90 0.028], 'ANIMATION DU CYCLE', true);
-bouton(pan, [0.050 0.576 0.29 0.040], 'Lancer',  @(~, ~) lancerAnimation(fig));
-bouton(pan, [0.355 0.576 0.29 0.040], 'Pause',   @(~, ~) mettreEnPause(fig));
-bouton(pan, [0.660 0.576 0.29 0.040], 'Arrêter', @(~, ~) arreterAnimation(fig));
+h.lblAnim = etiquette(pan, [0 0 0.90 0.028], 'ANIMATION DU CYCLE', true);
+h.btnLancer  = bouton(pan, [0.050 0 0.29 0.040], 'Lancer',  @(~, ~) lancerAnimation(fig));
+h.btnPause   = bouton(pan, [0.355 0 0.29 0.040], 'Pause',   @(~, ~) mettreEnPause(fig));
+h.btnArreter = bouton(pan, [0.660 0 0.29 0.040], 'Arrêter', @(~, ~) arreterAnimation(fig));
 
-etiquette(pan, [0.05 0.532 0.56 0.028], 'Vitesse de l''animation', false);
+h.lblVitesse = etiquette(pan, [0 0 0.56 0.028], 'Vitesse de l''animation', false);
 h.popVitesse = uicontrol('Parent', pan, 'Style', 'popupmenu', ...
-    'Units', 'normalized', 'Position', [0.62 0.530 0.33 0.038], ...
+    'Units', 'normalized', 'Position', [0.62 0 0.33 0.038], ...
     'String', {'0,1 x', '0,25 x', '0,5 x', '1 x', '2 x'}, 'Value', 4, ...
+    'TooltipString', '0,25 x montre le cycle quatre fois plus lentement que la réalité.', ...
     'Callback', @(~, ~) changerVitesse(fig));
 
 % Glissière : permet de se déplacer à la main dans le cycle
-etiquette(pan, [0.05 0.496 0.90 0.026], 'Position dans le cycle (glissière)', false);
+h.lblGliss = etiquette(pan, [0 0 0.90 0.026], 'Moment du cycle (glisser)', false);
 h.glissiere = uicontrol('Parent', pan, 'Style', 'slider', ...
-    'Units', 'normalized', 'Position', [0.05 0.466 0.90 0.028], ...
+    'Units', 'normalized', 'Position', [0.05 0 0.90 0.028], ...
     'Min', 0, 'Max', 1, 'Value', 0, 'SliderStep', [0.005 0.05], ...
+    'TooltipString', 'Déplacez pour voir la machine à un moment précis du cycle.', ...
     'Callback', @(~, ~) deplacerGlissiere(fig));
 
 % Case à cocher : agrandir les tracés sur l'étape du transfert
 h.caseZoom = uicontrol('Parent', pan, 'Style', 'checkbox', ...
-    'Units', 'normalized', 'Position', [0.05 0.424 0.90 0.034], ...
-    'String', 'Tracés : zoom sur le transfert', 'Value', 0, ...
+    'Units', 'normalized', 'Position', [0.05 0 0.90 0.034], ...
+    'String', 'Graphiques : agrandir le transfert', 'Value', 0, ...
     'BackgroundColor', fond, ...
+    'TooltipString', 'Montre seulement la rotation avec la rondelle dans les graphiques.', ...
     'Callback', @(~, ~) changerZoom(fig));
 
-% Valeurs à l'instant affiché (mises à jour pendant l'animation).
-% [Claude] La zone est plus haute qu'avant le 18 nov. 2026 : les boutons
-% « Optimiser » et « Appliquer » ont disparu (le calcul de la durée est
-% maintenant permanent) et le couple instantané a été ajouté.
-etiquette(pan, [0.05 0.386 0.90 0.028], 'VALEURS À L''INSTANT AFFICHÉ', true);
+% Valeurs à l'instant affiché (mises à jour pendant l'animation)
+h.lblInstant = etiquette(pan, [0 0 0.90 0.028], 'EN CE MOMENT', true);
 h.txtInstant = uicontrol('Parent', pan, 'Style', 'text', ...
-    'Units', 'normalized', 'Position', [0.05 0.196 0.90 0.186], ...
+    'Units', 'normalized', 'Position', [0.05 0.12 0.90 0.15], ...
     'String', '', 'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1]);
 
-% --- Résultats et vérification ---
-etiquette(pan, [0.05 0.148 0.90 0.028], 'RÉSULTATS ET VÉRIFICATION', true);
-bouton(pan, [0.05 0.100 0.90 0.042], 'Sauvegarder les résultats (.txt)', ...
+% --- Boutons du bas (position fixe) ---
+bouton(pan, [0.05 0.062 0.90 0.040], 'Sauvegarder les résultats (.txt)', ...
        @(~, ~) sauvegarder(fig));
-bouton(pan, [0.05 0.054 0.90 0.042], 'Tableau des hypothèses', ...
-       @(~, ~) montrerHypotheses(fig));
-bouton(pan, [0.05 0.008 0.90 0.042], 'Tests et vérification', ...
-       @(~, ~) lancerVerifications(fig));
+bouton(pan, [0.05 0.012 0.44 0.042], 'Détails techniques', @(~, ~) montrerDetails(fig));
+bouton(pan, [0.51 0.012 0.44 0.042], 'Aide', @(~, ~) montrerAide());
 
 % ---------------------------------------------------------------------------------
-%  COLONNE DU CENTRE : ANIMATION, MESSAGE, VALEURS CLÉS
+%  COLONNE DU CENTRE : ANIMATION, MESSAGE, RÉSULTATS
 % ---------------------------------------------------------------------------------
 % Zone de dessin de l'animation (remplie par creerScene.m)
 h.axScene = axes('Parent', fig, 'Units', 'normalized', ...
@@ -234,55 +279,53 @@ h.axScene = axes('Parent', fig, 'Units', 'normalized', ...
 % Bandeau de message : vert, orange ou rouge selon la situation
 h.txtMessage = uicontrol('Parent', fig, 'Style', 'text', ...
     'Units', 'normalized', 'Position', [0.222 0.375 0.455 0.085], ...
-    'String', '', 'FontWeight', 'bold', 'HorizontalAlignment', 'left');
+    'String', '', 'FontWeight', 'bold', 'FontSize', 10, 'HorizontalAlignment', 'left');
 
-% Panneau des valeurs clés
-panV = uipanel('Parent', fig, 'Title', 'Valeurs clés et comparaison des matériaux', ...
+% Panneau des résultats
+panV = uipanel('Parent', fig, 'Title', 'Résultats', ...
                'FontWeight', 'bold', 'BackgroundColor', fond, ...
                'Units', 'normalized', 'Position', [0.222 0.015 0.455 0.350]);
 
-% a) Valeurs du matériau choisi (texte sur plusieurs lignes)
-h.txtValeurs = uicontrol('Parent', panV, 'Style', 'text', ...
-    'Units', 'normalized', 'Position', [0.012 0.02 0.345 0.96], ...
-    'String', '', 'HorizontalAlignment', 'left', 'BackgroundColor', fond);
+% a) Résumé du cas choisi, en phrases (voir afficherResume)
+h.txtResume = uicontrol('Parent', panV, 'Style', 'text', ...
+    'Units', 'normalized', 'Position', [0.012 0.02 0.50 0.96], ...
+    'String', '', 'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], ...
+    'FontSize', 10);
 
-% b) Tableau comparatif des trois matériaux (une ligne par matériau).
-% La largeur des colonnes est réglée plus bas par ajusterTableau.
-% [Claude] Depuis le 18 nov. 2026, les deux durées minimales sont
-% affichées séparément (point d de la consigne, section 5.5) :
-%   T FS     : durée minimale pour que FS >= FS cible (la ventouse tient) ;
-%              c'est la valeur que demande la consigne ;
-%   T couple : durée minimale que permet le couple de l'actionneur ;
-%   T Festo  : durée minimale pour que l'énergie en fin de course reste
-%              sous la limite de la fiche Festo, sans butées externes
-%              (ajoutée le 19 nov. 2026, voir dureeFesto.m) ;
-%   T min    : la plus longue des limites, donc la durée retenue.
-% Abréviation : F max = effort maximal de la ventouse sur la pièce. Les
-% colonnes « Poids » puis « Masse » ont été retirées pour faire de la
-% place : la masse et le poids du matériau choisi restent affichés dans
-% les valeurs clés, et ceux des trois matériaux dans le fichier sauvegardé.
+% b) Comparaison des trois rondelles (consigne, point c). Les durées par
+%    contrainte (dont la durée minimale selon le FS, point d) sont aussi
+%    dans le résumé et dans « Détails techniques ».
+h.lblTableau = etiquette(panV, [0.525 0.90 0.47 0.07], 'Comparaison (masse en g, durées en s)', true);
 h.tableau = uitable('Parent', panV, ...
-    'Units', 'normalized', 'Position', [0.365 0.52 0.627 0.46], ...
-    'ColumnName', {'Matériau', 'F max (N)', 'FS min', ...
-                   'T FS (s)', 'T couple', 'T Festo', 'T min (s)'}, ...
+    'Units', 'normalized', 'Position', [0.525 0.47 0.465 0.43], ...
+    'ColumnName', {'Rondelle', 'Masse', 'Transf.', 'Limite', 'Cycle', 'FS'}, ...
     'RowName', [], ...
     'FontSize', 9, ...
-    'Data', cell(numel(P.materiaux), 7));
-ajusterTableau(h.tableau, [0.17 0.155 0.115 0.14 0.14 0.135 0.145]);
+    'Data', cell(numel(P.materiaux), 6));
+ajusterTableau(h.tableau, [0.20 0.14 0.17 0.18 0.14 0.15]);
 
-% c) Résultat de l'optimisation (texte sur plusieurs lignes)
-h.txtOptim = uicontrol('Parent', panV, 'Style', 'text', ...
-    'Units', 'normalized', 'Position', [0.365 0.02 0.627 0.48], ...
-    'String', '', 'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1]);
+% c) Petit lexique pour lire les résultats
+h.txtLexique = uicontrol('Parent', panV, 'Style', 'text', ...
+    'Units', 'normalized', 'Position', [0.525 0.02 0.465 0.43], ...
+    'HorizontalAlignment', 'left', 'BackgroundColor', fond, 'FontSize', 8, ...
+    'String', { ...
+      'Comment lire :', ...
+      '- Transf. : rotation du bras avec la rondelle.', ...
+      '- Limite : ce qui empêche d''aller plus vite.', ...
+      '   Chocs = énergie en fin de course (fabricant).', ...
+      '   Couple = force du vérin.  Ventouse = prise.', ...
+      '- FS (facteur de sécurité) : combien de fois la', ...
+      '   ventouse tient plus que l''effort nécessaire.', ...
+      '   Il doit rester au-dessus de la marge exigée.'});
 
 % ---------------------------------------------------------------------------------
 %  COLONNE DE DROITE : LES CINQ TRACÉS
 % ---------------------------------------------------------------------------------
-titres = {'Position angulaire du bras (°)', ...
-          'Vitesse angulaire du bras (rad/s)', ...
-          'Accélération angulaire du bras (rad/s^2)', ...
-          'Effort de la ventouse sur la pièce (N)', ...
-          'Facteur de sécurité de la prise (-)'};
+titres = {'Angle du bras (°)', ...
+          'Vitesse du bras (rad/s)', ...
+          'Accélération du bras (rad/s^2)', ...
+          'Effort de la ventouse sur la rondelle (N)', ...
+          'Facteur de sécurité de la prise (FS)'};
 
 bleu  = [0.00 0.35 0.70];
 rouge = [0.85 0.10 0.10];
@@ -336,14 +379,87 @@ end
 % Légende du tracé 4. On la crée APRÈS les curseurs et on donne la liste
 % exacte des lignes à nommer : ainsi, le curseur n'y apparaît pas.
 legend(h.ax(4), [h.courbeFrequis, h.courbeFnorme, h.lignePoids], ...
-       {'Maintien requis', 'Effort total', 'Poids'}, ...
+       {'Effort nécessaire', 'Effort total', 'Poids'}, ...
        'Location', 'north', 'Orientation', 'horizontal', 'FontSize', 7);
 
-% Tracé 5 : petite étiquette « FS cible » posée sur la ligne pointillée
+% Tracé 5 : petite étiquette « FS exigé » posée sur la ligne pointillée
 % (sa position est fixée dans afficherTraces).
-h.texteFScible = text(0, 0, 'FS cible', 'Parent', h.ax(5), 'Color', rouge, ...
+h.texteFScible = text(0, 0, 'FS exigé', 'Parent', h.ax(5), 'Color', rouge, ...
                       'FontSize', 8, 'VerticalAlignment', 'bottom');
 
+% Positions verticales des commandes de gauche (voir placerCommandes)
+placerCommandes(h, S.modeDurees, false);
+
+end
+
+
+function placerCommandes(h, modeDurees, avance)
+% PLACERCOMMANDES  Range les commandes de gauche de haut en bas.
+%   Les lignes « Durée du transfert » (mode 3 seulement) et « réglages
+%   avancés » (case cochée seulement) sont cachées quand elles ne servent
+%   pas ; les lignes suivantes remontent. La zone « En ce moment » prend
+%   toute la place qui reste au-dessus des boutons du bas.
+%
+%   Chaque ligne : {poignées, hauteur, espace sous la ligne, visible}
+
+lignes = { ...
+    h.lblMat,                                  0.028, 0.006, true; ...
+    h.popMateriau,                             0.038, 0.014, true; ...
+    h.lblMode,                                 0.028, 0.006, true; ...
+    h.popMode,                                 0.038, 0.008, true; ...
+    [h.lblT, h.editT],                         0.038, 0.006, modeDurees == 3; ...
+    h.lblEquip,                                0.028, 0.006, true; ...
+    h.caseAmort,                               0.034, 0.004, true; ...
+    h.caseAvance,                              0.034, 0.008, true; ...
+    [h.lblCouple, h.editCouple],               0.038, 0.006, avance; ...
+    [h.lblFS, h.editFS],                       0.038, 0.006, avance; ...
+    h.btnDefaut,                               0.038, 0.008, avance; ...
+    h.lblAnim,                                 0.028, 0.006, true; ...
+    [h.btnLancer, h.btnPause, h.btnArreter],   0.040, 0.008, true; ...
+    [h.lblVitesse, h.popVitesse],              0.038, 0.008, true; ...
+    h.lblGliss,                                0.026, 0.004, true; ...
+    h.glissiere,                               0.028, 0.008, true; ...
+    h.caseZoom,                                0.034, 0.010, true; ...
+    h.lblInstant,                              0.028, 0.004, true};
+
+y = 0.985;                              % haut de la zone utile du panneau
+for k = 1:size(lignes, 1)
+    poignees = lignes{k, 1};
+    hauteur  = lignes{k, 2};
+    if lignes{k, 4}
+        y = y - hauteur;
+        for p = poignees
+            pos = get(p, 'Position');           % [gauche, bas, largeur, hauteur]
+            % Une étiquette (hauteur 0,028) est centrée sur une ligne plus haute.
+            decalage = (hauteur - pos(4)) / 2;
+            set(p, 'Position', [pos(1), y + decalage, pos(3), pos(4)], 'Visible', 'on');
+        end
+        y = y - lignes{k, 3};
+    else
+        set(poignees, 'Visible', 'off');
+    end
+end
+
+% Zone « En ce moment » : du bas de la dernière ligne aux boutons du bas
+basZone = 0.112;
+set(h.txtInstant, 'Position', [0.05, basZone, 0.90, max(y - basZone, 0.08)]);
+
+% Les étiquettes du haut sont alignées à gauche avec les commandes
+for p = [h.lblMat, h.lblMode, h.lblEquip, h.lblAnim, h.lblGliss, h.lblInstant, ...
+         h.lblT, h.lblCouple, h.lblFS, h.lblVitesse]
+    pos = get(p, 'Position');
+    set(p, 'Position', [0.05, pos(2), pos(3), pos(4)]);
+end
+
+end
+
+
+function basculerAvance(fig)
+% BASCULERAVANCE  Montre ou cache les réglages avancés (couple et FS exigé).
+%   Cacher ces réglages ne change pas leurs valeurs : le calcul continue
+%   d'utiliser ce qui est écrit dans les cases.
+S = guidata(fig);
+placerCommandes(S.h, get(S.h.popMode, 'Value'), get(S.h.caseAvance, 'Value') == 1);
 end
 
 
@@ -399,8 +515,8 @@ end
 function mettreAJour(fig)
 % METTREAJOUR  Lit les entrées, les valide, refait les calculs et rafraîchit l'affichage.
 %   Cette fonction est appelée à l'ouverture, puis chaque fois que
-%   l'utilisateur change le matériau, le couple, le facteur de sécurité ou
-%   l'origine des durées.
+%   l'utilisateur change la rondelle, la vitesse du bras, les amortisseurs,
+%   le couple ou la marge de sécurité.
 %
 %   L'ORDRE DES CALCULS (depuis le 18 nov. 2026)
 %     couple de l'actionneur  ->  durée minimale de chaque rotation
@@ -418,14 +534,17 @@ S.modeDurees = get(S.h.popMode, 'Value');       % 1 calculée, 2 vidéo, 3 impos
 couple       = lireNombre(S.h.editCouple);
 FScible      = lireNombre(S.h.editFS);
 
-% La case de durée n'est active (et lue) qu'en mode « imposée ».
+% La case de durée n'est visible (et lue) qu'en mode « je choisis ».
+placerCommandes(S.h, S.modeDurees, get(S.h.caseAvance, 'Value') == 1);
 if S.modeDurees == 3
-    set(S.h.editT, 'Enable', 'on');
     Timpose = lireNombre(S.h.editT);
 else
-    set(S.h.editT, 'Enable', 'off');
     Timpose = [];                       % [] = pas de durée à vérifier
 end
+
+% Amortisseurs (simulation) : la limite d'énergie Festo ne s'applique
+% plus quand des butées externes ou des amortisseurs absorbent le choc.
+S.P.actionneur.festo.actif = (get(S.h.caseAmort, 'Value') == 0);
 
 % --- 2. Valider les entrées AVANT de calculer --------------------------------------
 [valide, message] = validerEntrees(S.P, couple, FScible, Timpose);
@@ -435,8 +554,8 @@ if ~valide
     S.valide = false;
     guidata(fig, S);
     effacerResultats(S);
-    afficherMessage(S.h, 'erreur', {['ENTRÉE INVALIDE - ' message], ...
-                    'Aucun calcul n''a été fait. Corriger la valeur.'});
+    afficherMessage(S.h, 'erreur', {['VALEUR INVALIDE : ' message], ...
+                    'Aucun calcul n''a été fait. Corrigez la valeur dans les réglages.'});
     return;
 end
 
@@ -516,8 +635,11 @@ if isempty(S.R{S.iMat})
     guidata(fig, S);
     effacerResultats(S);
     afficherTableau(S);
-    afficherMessage(S.h, 'alerte', {sprintf(['COUPLE INSUFFISANT (%.2f N.m) ' ...
-        'pour le matériau %s.'], couple, S.P.materiaux(S.iMat).nom), explication});
+    afficherMessage(S.h, 'alerte', {sprintf(['IMPOSSIBLE : le vérin (%.2f N.m) n''a pas ' ...
+        'assez de force pour soulever la rondelle en %s.'], couple, S.P.materiaux(S.iMat).nom), ...
+        'Augmentez le couple dans les réglages avancés.'});
+    S.lignesDomaine = {explication};
+    guidata(fig, S);
     return;
 end
 
@@ -536,13 +658,15 @@ set(S.h.glissiere, 'Max', S.R{S.iMat}.dureeCycle);
 guidata(fig, S);
 
 afficherTraces(S);
-afficherValeurs(S);
+afficherResume(S);
 afficherTableau(S);
-afficherDurees(S);
 afficherInstant(S);
 
-[niveau, lignes] = verifierDomaine(S.P, S.R{S.iMat}, S.FScible);
-afficherMessage(S.h, niveau, lignes);
+% Le jugement complet (verifierDomaine) est gardé pour « Détails
+% techniques » ; le bandeau en donne une version en langage simple.
+[niveau, S.lignesDomaine] = verifierDomaine(S.P, S.R{S.iMat}, S.FScible);
+guidata(fig, S);
+afficherMessage(S.h, niveau, messageSimple(S, niveau));
 
 end
 
@@ -625,8 +749,121 @@ lim = [yMin - marge, yMax + marge];
 end
 
 
-function afficherValeurs(S)
-% AFFICHERVALEURS  Écrit les valeurs clés du matériau choisi (panneau du centre).
+function texte = nomLimite(limite, court)
+% NOMLIMITE  Nom en mots simples de la limite qui fixe une durée.
+%   limite : 'ventouse', 'couple', 'frequence', 'festo' ou 'aucune'
+%   court  : true pour le tableau (un mot), false pour une phrase
+switch limite
+    case 'ventouse'
+        noms = {'Ventouse', 'la prise de la ventouse'};
+    case 'couple'
+        noms = {'Couple', 'la force du vérin (couple)'};
+    case 'frequence'
+        noms = {'Fréq.', 'la fréquence du vérin'};
+    case 'festo'
+        noms = {'Chocs', 'les chocs en fin de course'};
+    otherwise
+        noms = {'-', 'aucune limite'};
+end
+if court
+    texte = noms{1};
+else
+    texte = noms{2};
+end
+end
+
+
+function afficherResume(S)
+% AFFICHERRESUME  Résume en phrases le cas choisi (panneau « Résultats »).
+%   [Claude] Remplace depuis le 19 nov. 2026 la liste de valeurs
+%   techniques, qui est maintenant dans « Détails techniques ».
+%   On y garde : la cadence (comparée à la machine actuelle), la durée de
+%   chaque rotation et ce qui la limite, la sécurité de la prise, et la
+%   durée minimale compatible avec le FS exigé (point d de la consigne).
+
+res  = S.R{S.iMat};
+info = S.infoOpt{S.iMat};
+P    = S.P;
+cVid = P.dureeCycle;                    % [s] cycle mesuré sur la vidéo
+
+switch S.modeDurees
+    case 1
+        origine = 'vitesse max.';
+    case 2
+        origine = 'machine actuelle';
+    otherwise
+        origine = 'durée choisie';
+end
+
+lignes = {sprintf('RONDELLE EN %s (%s)', upper(res.nomMateriau), origine), ...
+          sprintf('Cycle complet : %.2f s, soit %.1f rondelles/min', res.dureeCycle, res.cadence), ...
+          sprintf('   Machine actuelle : %.2f s, soit %.1f rondelles/min', cVid, 60 / cVid), ...
+          ''};
+
+if S.modeDurees == 1
+    lignes{end+1} = sprintf('Transfert : %.3f s', res.T);
+    lignes{end+1} = ['   limité par ' nomLimite(info.limite, false)];
+    lignes{end+1} = sprintf('Retour à vide : %.3f s', res.Tretour);
+    lignes{end+1} = ['   limité par ' nomLimite(S.limiteRetour, false)];
+else
+    lignes{end+1} = sprintf('Transfert : %.3f s   (minimum permis : %s s)', res.T, ...
+                            texteDuree(S.Tmin(S.iMat)));
+    lignes{end+1} = sprintf('Retour à vide : %.3f s   (minimum permis : %s s)', res.Tretour, ...
+                            texteDuree(S.TretourMin));
+end
+
+lignes{end+1} = '';
+lignes{end+1} = sprintf('Prise : FS minimal %.1f (exigé : %.1f)', res.FSmin, S.FScible);
+lignes{end+1} = sprintf('Transfert le plus court sûr pour la ventouse : %s s', ...
+                        texteDuree(info.Tventouse));
+
+set(S.h.txtResume, 'String', lignes);
+
+end
+
+
+function afficherTableau(S)
+% AFFICHERTABLEAU  Remplit le tableau comparatif des trois rondelles.
+%   Une ligne par rondelle. En mode « la plus rapide permise », chaque
+%   rondelle tourne à SA propre durée minimale : le tableau compare donc
+%   les trois rondelles chacune à sa vitesse maximale. Le détail des
+%   durées par contrainte est dans « Détails techniques ».
+%
+%   Si le couple ne suffit pas à soulever une rondelle, sa ligne indique
+%   « impossible » au lieu des résultats.
+
+nMat    = numel(S.P.materiaux);
+donnees = cell(nMat, 6);                % tableau de cellules (texte)
+
+for i = 1:nMat
+    donnees{i, 1} = S.P.materiaux(i).nom;
+    donnees{i, 2} = sprintf('%.0f', 1000 * massePiece(S.P, i));
+
+    if isempty(S.R{i})
+        donnees(i, 3:6) = {'impossible', '-', '-', '-'};
+        continue;
+    end
+
+    donnees{i, 3} = sprintf('%.3f', S.R{i}.T);
+    switch S.modeDurees
+        case 1
+            donnees{i, 4} = nomLimite(S.infoOpt{i}.limite, true);
+        case 2
+            donnees{i, 4} = '(vidéo)';
+        otherwise
+            donnees{i, 4} = '(choisie)';
+    end
+    donnees{i, 5} = sprintf('%.2f', S.R{i}.dureeCycle);
+    donnees{i, 6} = sprintf('%.1f', S.R{i}.FSmin);
+end
+
+set(S.h.tableau, 'Data', donnees);
+
+end
+
+
+function lignes = lignesValeurs(S)
+% LIGNESVALEURS  Valeurs techniques du cas choisi (fenêtre « Détails techniques »).
 
 res = S.R{S.iMat};
 P   = S.P;
@@ -646,64 +883,42 @@ lignes = { ...
     sprintf('Durée du cycle : %.2f s', res.dureeCycle), ...
     sprintf('Cadence : %.2f pièces/min', res.cadence)};
 
-set(S.h.txtValeurs, 'String', lignes);
-
 end
 
 
-function afficherTableau(S)
-% AFFICHERTABLEAU  Remplit le tableau comparatif des trois matériaux.
-%   Une ligne par matériau. En mode « durée calculée », chaque matériau
-%   tourne à SA propre durée minimale : le tableau compare donc les trois
-%   matériaux chacun à sa vitesse maximale. La colonne « T min » donne
-%   cette durée minimale du transfert, au couple choisi.
-%
-%   Si le couple ne suffit pas à soulever un matériau, sa ligne indique
-%   « impossible » au lieu des résultats.
+function donnees = donneesTableauDetaille(S)
+% DONNEESTABLEAUDETAILLE  Durées minimales par contrainte, pour les trois matériaux.
+%   T FS     : durée minimale pour que FS >= FS cible (consigne, point d) ;
+%   T couple : durée minimale que permet le couple de l'actionneur ;
+%   T Festo  : durée minimale selon l'énergie en fin de course (fiche
+%              Festo, sans butées externes) ;
+%   T min    : la plus longue des limites, donc la durée retenue.
 
 nMat    = numel(S.P.materiaux);
-donnees = cell(nMat, 7);                % tableau de cellules (texte)
-
+donnees = cell(nMat, 7);
 for i = 1:nMat
     info = S.infoOpt{i};
     donnees{i, 1} = S.P.materiaux(i).nom;
-
     if isempty(S.R{i})
-        % Couple insuffisant pour ce matériau : aucun cycle possible
-        donnees{i, 2} = '-';
-        donnees{i, 3} = '-';
+        donnees(i, 2:3) = {'-', '-'};
     else
         donnees{i, 2} = sprintf('%.3f', S.R{i}.FnormeMax);
         donnees{i, 3} = sprintf('%.2f', S.R{i}.FSmin);
     end
-
-    % Les durées minimales du transfert (voir construireInterface).
     donnees{i, 4} = texteDuree(info.Tventouse);
     donnees{i, 5} = texteDuree(info.Tcouple);
     donnees{i, 6} = texteDuree(info.Tfesto);
-
-    % En mode vidéo, le cycle est calculé avec les durées mesurées même si
-    % le couple choisi ne permettrait pas de les atteindre : la durée
-    % minimale peut donc être impossible alors que le cycle existe.
     if isnan(S.Tmin(i))
         donnees{i, 7} = 'impossible';
     else
         donnees{i, 7} = sprintf('%.3f', S.Tmin(i));
     end
 end
-
-set(S.h.tableau, 'Data', donnees);
-
 end
 
 
-function afficherDurees(S)
-% AFFICHERDUREES  Explique d'où viennent les durées des deux rotations
-%   du matériau choisi, et ce qu'elles donnent sur le cycle complet.
-%
-%   [Claude] Remplace depuis le 18 nov. 2026 l'affichage du bouton
-%   « Optimiser » : le calcul de la durée minimale est maintenant fait à
-%   chaque mise à jour, puisque la durée découle du couple.
+function lignes = lignesDurees(S)
+% LIGNESDUREES  D'où viennent les durées des deux rotations (« Détails techniques »).
 
 i     = S.iMat;
 res   = S.R{i};
@@ -711,64 +926,81 @@ info  = S.infoOpt{i};
 P     = S.P;
 cVid  = P.dureeCycle;                   % [s] cycle mesuré sur la vidéo
 
-if S.modeDurees == 1
-    % ---------- Durées CALCULÉES à partir du couple ----------
-    lignes = {sprintf('DURÉES DES ROTATIONS - %s, couple %.2f N.m', ...
-                      res.nomMateriau, P.actionneur.couple)};
-
-    % Étape 4 : les deux durées minimales du transfert, puis la durée
-    % retenue (point d de la consigne : la durée minimale compatible avec
-    % le facteur de sécurité, c'est la limite de la VENTOUSE).
-    lignes{end+1} = 'Transfert minimal (étape 4) :';
-    lignes{end+1} = sprintf('   selon la ventouse (FS >= %.2f) : %s s', S.FScible, ...
-                            texteDuree(info.Tventouse));
-    lignes{end+1} = sprintf('   selon l''actionneur : couple %s s ; énergie Festo %s s', ...
-                            texteDuree(info.Tcouple), texteDuree(info.Tfesto));
-    lignes{end+1} = sprintf('   RETENU : %.3f s (limite : %s, arrondi au ms supérieur)', ...
-                            res.T, upper(info.limite));
-
-    % Étape 2 : le retour à vide. Sans rondelle, aucun critère de succion :
-    % seul l'actionneur limite cette rotation.
-    lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s (limite : %s, sans rondelle)', ...
-                            res.Tretour, upper(S.limiteRetour));
-
-    % Le cycle complet, comparé au montage actuel
-    lignes{end+1} = sprintf('Cycle : %.2f s (%.2f pièces/min) ; vidéo : %.2f s (%.2f)', ...
-                            res.dureeCycle, res.cadence, cVid, 60 / cVid);
-
+lignes = {sprintf('DURÉES DES ROTATIONS - %s, couple %.2f N.m', ...
+                  res.nomMateriau, P.actionneur.couple)};
+lignes{end+1} = sprintf('Transfert utilisé (étape 4) : %.3f s', res.T);
+lignes{end+1} = '   Durées minimales selon chaque limite :';
+lignes{end+1} = sprintf('   - ventouse (FS >= %.2f, consigne point d) : %s s', ...
+                        S.FScible, texteDuree(info.Tventouse));
+lignes{end+1} = sprintf('   - couple de l''actionneur : %s s', texteDuree(info.Tcouple));
+lignes{end+1} = sprintf('   - fréquence maximale : %s s', texteDuree(info.Tfrequence));
+if P.actionneur.festo.actif
+    lignes{end+1} = sprintf('   - énergie en fin de course (Festo) : %s s', texteDuree(info.Tfesto));
 else
-    % ---------- Durées MESURÉES (vidéo) ou IMPOSÉES (utilisateur) ----------
-    if S.modeDurees == 2
-        lignes = {sprintf('DURÉES DES ROTATIONS - %s, mesurées sur la vidéo', res.nomMateriau)};
-    else
-        lignes = {sprintf('DURÉES DES ROTATIONS - %s, transfert imposé', res.nomMateriau)};
+    lignes{end+1} = '   - énergie en fin de course : non appliquée (amortisseurs)';
+end
+lignes{end+1} = sprintf('   Minimum retenu : %s s (limite : %s)', texteDuree(S.Tmin(i)), ...
+                        upper(info.limite));
+lignes{end+1} = sprintf('Retour à vide utilisé (étape 2) : %.3f s', res.Tretour);
+lignes{end+1} = sprintf('   Minimum : %s s (limite : %s)', texteDuree(S.TretourMin), ...
+                        upper(S.limiteRetour));
+lignes{end+1} = sprintf('Cycle : %.2f s (%.2f pièces/min) ; vidéo : %.2f s (%.2f)', ...
+                        res.dureeCycle, res.cadence, cVid, 60 / cVid);
+
+end
+
+
+function lignes = messageSimple(S, niveau)
+% MESSAGESIMPLE  Message du bandeau, en langage simple.
+%   Le jugement technique complet vient de verifierDomaine.m et reste
+%   affiché dans « Détails techniques ». Ici, on dit seulement ce que
+%   l'utilisateur doit savoir, et quoi faire.
+
+res = S.R{S.iMat};
+P   = S.P;
+lignes = {};
+
+% 1. La rondelle est-elle bien tenue ?
+if res.FSmin < 1
+    lignes{end+1} = sprintf('DANGER : la rondelle tombe pendant le transfert (à t = %.2f s).', ...
+                            res.tFSmin);
+elseif res.FSmin < S.FScible
+    lignes{end+1} = sprintf(['ATTENTION : la rondelle est tenue, mais avec une marge trop faible ' ...
+                             '(FS %.1f au lieu de %.1f).'], res.FSmin, S.FScible);
+end
+
+% 2. Le vérin est-il utilisé dans ses limites ?
+if P.actionneur.verifier
+    if res.coupleMax > P.actionneur.couple || res.T < P.actionneur.dureeMin
+        lignes{end+1} = 'ATTENTION : cette vitesse dépasse ce que le vérin peut faire.';
     end
-
-    lignes{end+1} = sprintf('Transfert (étape 4) : %.3f s', res.T);
-    lignes{end+1} = sprintf('   minimums : ventouse %s | couple %s | Festo %s s', ...
-                            texteDuree(info.Tventouse), texteDuree(info.Tcouple), ...
-                            texteDuree(info.Tfesto));
-
-    lignes{end+1} = sprintf('Retour à vide (étape 2) : %.3f s', res.Tretour);
-    if isnan(S.TretourMin)
-        lignes{end+1} = sprintf('   minimum à %.2f N.m : impossible (couple insuffisant)', ...
-                                P.actionneur.couple);
-    else
-        lignes{end+1} = sprintf('   minimum : %.3f s (limite : %s)', S.TretourMin, upper(S.limiteRetour));
-    end
-
-    lignes{end+1} = sprintf('Cycle : %.2f s, soit %.2f pièces/min', ...
-                            res.dureeCycle, res.cadence);
-    if S.modeDurees == 2
-        lignes{end+1} = 'Le montage réel est ralenti par ses limiteurs de débit.';
-    elseif ~isnan(S.Tmin(i)) && res.T < S.Tmin(i)
-        lignes{end+1} = 'ATTENTION : transfert imposé plus court que le minimum.';
-    else
-        lignes{end+1} = 'Retour à vide : durée mesurée sur la vidéo.';
+    if P.actionneur.festo.actif
+        Emax = P.actionneur.festo.energieMax;
+        Etr  = energieFinCourse(P, res.masse, res.T,       P.thetaPrise, P.thetaDepot);
+        Eret = energieFinCourse(P, 0,         res.Tretour, P.thetaDepot, P.thetaPrise);
+        rapport = max(Etr, Eret) / Emax;
+        if rapport > 1.001
+            lignes{end+1} = sprintf(['ATTENTION : chocs trop forts en fin de course (%.1f fois ' ...
+                                     'la limite du fabricant).'], rapport);
+            lignes{end+1} = '   Il faut des amortisseurs, ou ralentir le bras.';
+        end
     end
 end
 
-set(S.h.txtOptim, 'String', lignes);
+% 3. Tout va bien
+if isempty(lignes)
+    lignes{end+1} = ['Tout est correct : la rondelle est bien tenue et le vérin reste ' ...
+                     'dans ses limites.'];
+    if ~P.actionneur.festo.actif
+        lignes{end+1} = '   Simulation avec amortisseurs : la machine actuelle n''en a pas.';
+    elseif strcmp(niveau, 'ok')
+        lignes{end+1} = '   Détails : bouton « Détails techniques ».';
+    end
+end
+
+if ~strcmp(niveau, 'ok') && numel(lignes) < 3
+    lignes{end+1} = '   Explications complètes : bouton « Détails techniques ».';
+end
 
 end
 
@@ -815,18 +1047,20 @@ end
 set(S.h.glissiere, 'Value', min(max(t, 0), res.dureeCycle));
 
 % --- 4. Valeurs à cet instant ------------------------------------------------------------------
+% [Claude] Version en langage simple (19 nov. 2026) : nom de l'étape,
+% effort du vérin en pourcentage de son maximum, état de la rondelle.
+nomEtape = res.nomsEtapes{res.etape(k)};            % ex. « 4. Transfert »
 lignes = { ...
-    sprintf('t = %.2f s  (étape %d de 4)', t, res.etape(k)), ...
-    sprintf('Angle : %.1f°', res.theta(k) * 180/pi), ...
-    sprintf('Vitesse : %.2f rad/s', res.omega(k)), ...
-    sprintf('Accélération : %.1f rad/s²', res.alpha(k)), ...
-    sprintf('Couple au pivot : %.2f N.m (sur %.2f)', abs(res.couple(k)), S.P.actionneur.couple)};
+    sprintf('t = %.2f s : %s', t, nomEtape(4:end)), ...
+    sprintf('Angle du bras : %.0f°', res.theta(k) * 180/pi), ...
+    sprintf('Vitesse du bras : %.2f rad/s', res.omega(k)), ...
+    sprintf('Effort du vérin : %.0f %% de son maximum', ...
+            100 * abs(res.couple(k)) / S.P.actionneur.couple)};
 
 if res.tenue(k)
-    lignes{end+1} = sprintf('Maintien requis : %.3f N', res.Frequis(k));
-    lignes{end+1} = sprintf('FS : %.2f', res.FS(k));
+    lignes{end+1} = sprintf('Rondelle tenue : FS = %.1f', res.FS(k));
 else
-    lignes{end+1} = 'Pièce non tenue par la ventouse';
+    lignes{end+1} = 'Pas de rondelle dans la ventouse';
 end
 
 set(S.h.txtInstant, 'String', lignes);
@@ -874,10 +1108,9 @@ for i = 1:5
 end
 
 % Textes et tableau
-set(h.txtValeurs, 'String', 'Aucun résultat : entrée invalide.');
+set(h.txtResume,  'String', 'Aucun résultat : une valeur des réglages est invalide.');
 set(h.txtInstant, 'String', '');
-set(h.txtOptim,   'String', '');
-set(h.tableau,    'Data', cell(numel(S.P.materiaux), 7));
+set(h.tableau,    'Data', cell(numel(S.P.materiaux), 6));
 
 % Animation
 cla(h.axScene);
@@ -1020,15 +1253,16 @@ end
 %  GROUPE D - AUTRES BOUTONS
 % =================================================================================
 
-function retablirCouple(fig)
-% RETABLIRCOUPLE  Remet dans la case le couple du catalogue Festo.
+function valeursParDefaut(fig)
+% VALEURSPARDEFAUT  Remet le couple du catalogue Festo et la marge de sécurité de l'équipe.
 %
-%   [Claude] Remplace depuis le 18 nov. 2026 les boutons « Rétablir la
-%   durée de la vidéo », « Optimiser » et « Appliquer la durée minimale ».
-%   La durée n'étant plus une entrée, il n'y a plus de durée à rétablir ni
-%   à appliquer : c'est le couple qu'on remet à sa valeur de référence.
-S = guidata(fig);
-set(S.h.editCouple, 'String', sprintf('%.2f', S.P.actionneur.coupleCatalogue));
+%   [Claude] Remplace depuis le 19 nov. 2026 le bouton « Couple du
+%   catalogue Festo » : il remet aussi le FS exigé à la valeur justifiée
+%   par l'équipe (parametres.m).
+S  = guidata(fig);
+P0 = parametres();
+set(S.h.editCouple, 'String', sprintf('%.2f', P0.actionneur.coupleCatalogue));
+set(S.h.editFS,     'String', sprintf('%.2f', P0.FScible));
 mettreAJour(fig);
 end
 
@@ -1057,13 +1291,116 @@ reussi = sauvegarderResultats(chemin, S.P, S.R, S.iMat, S.FScible, S.Tmin, S.inf
                               S.modeDurees, S.TretourMin);
 
 if reussi
-    [niveau, lignes] = verifierDomaine(S.P, S.R{S.iMat}, S.FScible);
-    lignes{end+1} = ['Résultats sauvegardés dans : ' chemin];
-    afficherMessage(S.h, niveau, lignes);
+    [niveau, ~] = verifierDomaine(S.P, S.R{S.iMat}, S.FScible);
+    afficherMessage(S.h, niveau, {['Résultats sauvegardés dans : ' chemin]});
 else
     afficherMessage(S.h, 'erreur', {['Impossible d''écrire le fichier : ' chemin]});
 end
 
+end
+
+
+function montrerDetails(fig)
+% MONTRERDETAILS  Ouvre une fenêtre avec tous les résultats techniques.
+%   [Claude] Ajoutée le 19 nov. 2026 avec la simplification de l'interface.
+%   Rien n'a été retiré du programme : les valeurs clés, les durées par
+%   contrainte (dont le point d de la consigne), le jugement complet du
+%   domaine de validité, le tableau des hypothèses et les tests sont ici.
+%   La fenêtre montre l'état au moment où on l'ouvre.
+
+S = guidata(fig);
+if ~S.valide
+    afficherMessage(S.h, 'erreur', {'Aucun détail : corrigez d''abord les réglages.'});
+    return;
+end
+
+figD = figure('Name', 'Détails techniques', 'NumberTitle', 'off', 'MenuBar', 'none', ...
+              'Units', 'normalized', 'Position', [0.10 0.10 0.80 0.75], ...
+              'Color', [0.94 0.94 0.94]);
+fond = [0.94 0.94 0.94];
+
+etiquette(figD, [0.02 0.94 0.30 0.04], 'VALEURS CLÉS DU CAS CHOISI', true);
+uicontrol('Parent', figD, 'Style', 'text', 'Units', 'normalized', ...
+          'Position', [0.02 0.42 0.30 0.52], 'String', lignesValeurs(S), ...
+          'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1]);
+
+etiquette(figD, [0.34 0.94 0.64 0.04], ...
+          'DURÉES MINIMALES DU TRANSFERT PAR LIMITE (s), POUR LES TROIS MATÉRIAUX', true);
+hT = uitable('Parent', figD, 'Units', 'normalized', 'Position', [0.34 0.72 0.64 0.22], ...
+             'ColumnName', {'Matériau', 'Effort max (N)', 'FS min', 'T FS (point d)', ...
+                            'T couple', 'T Festo', 'T min retenu'}, ...
+             'RowName', [], 'Data', donneesTableauDetaille(S));
+ajusterTableau(hT, [0.16 0.15 0.10 0.16 0.14 0.14 0.15]);
+
+uicontrol('Parent', figD, 'Style', 'text', 'Units', 'normalized', ...
+          'Position', [0.34 0.42 0.64 0.28], 'String', lignesDurees(S), ...
+          'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1]);
+
+etiquette(figD, [0.02 0.36 0.96 0.04], 'JUGEMENT COMPLET DU DOMAINE DE VALIDITÉ', true);
+uicontrol('Parent', figD, 'Style', 'text', 'Units', 'normalized', ...
+          'Position', [0.02 0.12 0.96 0.24], 'String', S.lignesDomaine, ...
+          'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1]);
+
+uicontrol('Parent', figD, 'Style', 'pushbutton', 'Units', 'normalized', ...
+          'Position', [0.02 0.03 0.30 0.06], 'String', 'Tableau des hypothèses', ...
+          'Callback', @(~, ~) montrerHypotheses(fig));
+uicontrol('Parent', figD, 'Style', 'pushbutton', 'Units', 'normalized', ...
+          'Position', [0.35 0.03 0.30 0.06], 'String', 'Tests et vérification', ...
+          'Callback', @(~, ~) lancerVerifications(fig));
+uicontrol('Parent', figD, 'Style', 'text', 'Units', 'normalized', ...
+          'Position', [0.68 0.03 0.30 0.06], 'BackgroundColor', fond, ...
+          'HorizontalAlignment', 'left', 'FontSize', 8, ...
+          'String', {'Les tableaux des tests s''écrivent dans la', ...
+                     'fenêtre de commande de Matlab.'});
+end
+
+
+function montrerAide()
+% MONTRERAIDE  Ouvre un court mode d'emploi en langage simple.
+%   [Claude] Ajoutée le 19 nov. 2026 pour les utilisateurs du Consortium
+%   des mini-usines de l'Estrie.
+
+figA = figure('Name', 'Aide - comment utiliser le programme', 'NumberTitle', 'off', ...
+              'MenuBar', 'none', 'Units', 'normalized', 'Position', [0.25 0.12 0.50 0.76], ...
+              'Color', [1 1 1]);
+texte = { ...
+  'À QUOI SERT CE PROGRAMME', ...
+  'Il simule le bras qui prend une rondelle et la dépose plus loin. Il calcule la vitesse', ...
+  'la plus grande possible sans échapper la rondelle et sans abîmer le vérin, et la', ...
+  'cadence obtenue (rondelles par minute).', ...
+  '', ...
+  'EN TROIS ÉTAPES', ...
+  '1. Choisissez la rondelle (Delrin, aluminium ou acier).', ...
+  '2. Choisissez la vitesse du bras :', ...
+  '   - « La plus rapide permise » : le programme trouve la vitesse maximale sûre ;', ...
+  '   - « Comme la machine actuelle » : les durées mesurées sur la vidéo ;', ...
+  '   - « Je choisis la durée » : tapez la durée du transfert en secondes.', ...
+  '3. Équipement : cochez « Ajouter des amortisseurs » pour voir ce que la machine', ...
+  '   pourrait faire avec des amortisseurs ou des butées externes.', ...
+  '', ...
+  'Cliquez ensuite sur « Lancer » pour voir le cycle. Les graphiques de droite suivent', ...
+  'l''animation : le trait rouge vertical montre l''instant affiché.', ...
+  '', ...
+  'COMMENT LIRE LE MESSAGE EN COULEUR', ...
+  '   Vert : tout est correct.   Orange : attention, lire le message.', ...
+  '   Rouge : la rondelle risque de tomber, ou une valeur tapée est invalide.', ...
+  '', ...
+  'PETIT LEXIQUE', ...
+  '   Transfert : rotation du bras avec la rondelle. Retour : rotation à vide.', ...
+  '   Facteur de sécurité (FS) : combien de fois la ventouse tient plus que l''effort', ...
+  '      nécessaire. Il doit rester au-dessus de la marge exigée (2 par défaut).', ...
+  '   Couple : force de rotation du vérin (2 N.m pour le vérin Festo DSR-16 actuel).', ...
+  '   Chocs en fin de course : en arrivant au bout, le bras frappe les butées', ...
+  '      souples du vérin. Le fabricant limite l''énergie de ce choc ; sans', ...
+  '      amortisseurs, c''est souvent cette limite qui fixe la vitesse.', ...
+  '', ...
+  'POUR ALLER PLUS LOIN', ...
+  '   « Réglages avancés » : couple du vérin et marge de sécurité exigée.', ...
+  '   « Détails techniques » : toutes les valeurs calculées, les hypothèses et les tests.', ...
+  '   « Sauvegarder » : écrit tous les résultats dans un fichier texte.'};
+uicontrol('Parent', figA, 'Style', 'text', 'Units', 'normalized', ...
+          'Position', [0.04 0.02 0.92 0.96], 'String', texte, ...
+          'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 10);
 end
 
 
