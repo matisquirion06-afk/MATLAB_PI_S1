@@ -201,47 +201,50 @@ P.FScible = 2.0;                % [-]
 % -------------------------------------------------------------------------
 % La vidéo est filmée à 30 images par seconde. On compte les images de
 % chaque étape, puis : durée [s] = nombre d'images / 30.
-% [Claude] Relevé préliminaire dans la vidéo officielle
-% « mini_usine_en_fonction.mp4 » (précision d'environ +/- 2 images) :
-%   attente à la prise : images 690 -> 795            = 105 images
-%   transfert          : 795 -> 821 et 1185 -> 1213   = 26 et 28 (moyenne 27)
-%   attente au dépôt   : images 821 -> 905            =  84 images
-%   retour à vide      : 666 -> 690 et 905 -> 930     = 24 et 25 (moyenne 24,5)
-% Statut : PROVISOIRE (à refaire et à valider par l'équipe).
+%
+% [Fourni] Décompte de Matis, 19 nov. 2026, vidéo officielle
+% « mini_usine_en_fonction.mp4 », sur deux cycles complets.
+% Règle de comptage :
+%   - une rotation commence à la première image où le bras bouge et finit
+%     à la première image où il est immobile ;
+%   - une étape finit à l'image même où la suivante commence, donc
+%     durée = image de fin - image de début, et la somme des étapes
+%     redonne exactement la durée du cycle.
+%
+%   Étape                  Cycle 1            Cycle 2              Moyenne
+%   2. Retour à vide       662 ->  695 : 33   1984 -> 2020 : 36    34,5 images
+%   3. Attente à la prise  695 ->  788 : 93   2020 -> 2109 : 89    91 images
+%   4. Transfert           788 ->  822 : 34   2109 -> 2145 : 36    35 images
+%   1. Attente au dépôt    822 ->  862 : 40   2145 -> 2185 : 40    40 images
+%   Cycle complet          662 ->  862 : 200  1984 -> 2185 : 201   200,5 images
+%
+% Incertitude : environ ±1 image à chaque bout d'une étape (0,033 s).
+% [Claude] Un relevé préliminaire (14 nov. 2026, autre règle de comptage)
+% donnait des rotations de 27 et 24,5 images : l'écart d'environ 8 images
+% (0,27 s) vient de la règle de début et de fin du mouvement. C'est une
+% source d'incertitude à discuter dans le rapport.
+% Statut : CONFIRMÉ (mesure de l'équipe sur deux cycles).
 P.imagesParSeconde = 30;                    % [images/s]
 
-P.images.attentePrise = 105;                % [images]
-P.images.transfert    = 27;                 % [images]
-P.images.attenteDepot = 84;                 % [images]
-P.images.retour       = 24.5;               % [images]
+P.images.attentePrise = 91;                 % [images]
+P.images.transfert    = 35;                 % [images]
+P.images.attenteDepot = 40;                 % [images]
+P.images.retour       = 34.5;               % [images]
 
-% Les deux ROTATIONS gardent la duree comptee dans la video : ce sont des
-% evenements visuellement nets, et elles sont les seules a entrer dans la
-% physique (le transfert fixe les efforts et le facteur de securite).
-P.duree.transfert = P.images.transfert / P.imagesParSeconde;  % [s]
-P.duree.retour    = P.images.retour    / P.imagesParSeconde;  % [s]
+P.duree.transfert    = P.images.transfert    / P.imagesParSeconde;  % [s] 1,167 s
+P.duree.retour       = P.images.retour       / P.imagesParSeconde;  % [s] 1,150 s
+P.duree.attentePrise = P.images.attentePrise / P.imagesParSeconde;  % [s] 3,033 s
+P.duree.attenteDepot = P.images.attenteDepot / P.imagesParSeconde;  % [s] 1,333 s
 
-% Duree totale du cycle imposee par le client.
-% [Fourni] « Infos visite Cegep.docx », mandats : « raccourcir le cycle
-% (6 s actuellement) ». Decision d'equipe du 14 nov. 2026 : on retient
-% cette valeur plutot que les 8,0 s du decompte d'images, parce que les
-% ATTENTES varient beaucoup d'un cycle a l'autre dans la video (3,5 s puis
-% 8,5 s pour l'attente a la prise), alors que les deux rotations, elles,
-% sont stables. Les attentes dependent du reste de la ligne, pas du bras.
-% Statut : CONFIRME (valeur du client), repartition PROVISOIRE.
-P.dureeCycle = 6.0;         % [s]
-
-% Les deux ATTENTES se partagent ce qui reste du cycle, dans la proportion
-% observee dans la video (105 images a la prise contre 84 au depot).
-attentes = P.dureeCycle - P.duree.transfert - P.duree.retour;
-if attentes <= 0
-    error('RED:cycle', ...
-        ['Cycle de %.2f s trop court : les deux rotations en occupent ' ...
-         'deja %.2f s.'], P.dureeCycle, P.duree.transfert + P.duree.retour);
-end
-partPrise = P.images.attentePrise / (P.images.attentePrise + P.images.attenteDepot);
-P.duree.attentePrise = attentes * partPrise;          % [s]
-P.duree.attenteDepot = attentes * (1 - partPrise);    % [s]
+% Durée du cycle actuel = somme des quatre étapes mesurées (6,68 s).
+% [Fourni] Le client annonce « 6 s actuellement » (Infos visite Cégep.docx,
+% mandats) : la mesure concorde à 11 % près. [Claude] Avant le 19 nov.
+% 2026, le programme imposait 6,0 s et partageait le reste entre les deux
+% attentes, parce que le premier décompte donnait 8,0 s. Avec deux cycles
+% mesurés qui concordent (200 et 201 images), on utilise la mesure.
+P.dureeCycleClient = 6.0;   % [s] valeur annoncée par le client (comparaison)
+P.dureeCycle = P.duree.attenteDepot + P.duree.retour ...
+             + P.duree.attentePrise + P.duree.transfert;          % [s]
 
 %% ------------------------------------------------------------------------
 %  7. ACTIONNEUR ET MASSES EN ROTATION
